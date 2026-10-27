@@ -1,0 +1,36 @@
+MDK-ARM/DebugConfig/
+MDK-ARM/RTE/
+MDK-ARM/ZLLC_2027/
+MDK-ARM/*.uvguix.*
+MDK-ARM/JLinkLog.txt
+/build/
+ # 忽略 Keil 工程编译生成的文件
+*.bak
+*.ddk
+*.edk
+*.lst
+*.lnp
+*.mpf
+*.mpj
+*.obj
+*.omf
+*.plg
+*.rpt
+*.tmp
+*.__i
+*.crf
+*.o
+*.d
+*.axf
+*.tra
+*.dep          
+JLinkLog.txt
+*.iex
+*.htm
+*.sct
+!/MDK-ARM/ekf_tcm.sct
+*.map
+*.Administrator
+*.uvopt
+ # 忽略 VSCode 配置文件夹
+.vscode/

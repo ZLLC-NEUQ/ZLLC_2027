@@ -1,0 +1,35 @@
+>>> info
+
+Compiler Full Name: ARMCLANG 6
+Compiler Version: 
+Builder Mode: Incremental
+The amount of C files: 55
+The amount of C++ files: 42
+The amount of Asm files: 1
+
+>>> prebuild
+
+
+
+>>> cc
+
+In file included from ./../Core/Src/main.c:33:
+../User/Task/Inc\freertos_tasks.h:12:10: fatal error: 'FreeRTOS.h' file not found
+   12 | #include "FreeRTOS.h"
+      |          ^~~~~~~~~~~~
+1 error generated.
+./../Middlewares/Third_Party/FreeRTOS/Source/croutine.c:28:10: fatal error: 'FreeRTOS.h' file not found
+   28 | #include "FreeRTOS.h"
+      |          ^~~~~~~~~~~~
+1 error generated.
+./../Middlewares/Third_Party/FreeRTOS/Source/event_groups.c:37:10: fatal error: 'FreeRTOS.h' file not found
+   37 | #include "FreeRTOS.h"
+      |          ^~~~~~~~~~~~
+1 error generated.
+
+>>> ld
+
+
+
+>>> postbuild
+

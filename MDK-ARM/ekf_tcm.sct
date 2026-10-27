@@ -1,0 +1,26 @@
+; Shared by uVision and both Embedded IDE project locations.
+; __main loads ITCM code and zeroes the DTCM EKF workspace before constructors.
+; Default data, DMA buffers, stacks and heaps keep the existing AXI SRAM layout.
+; L6314 is suppressed by the projects because EKF_USE_TCM=0 leaves these empty.
+LR_IROM1 0x08000000 0x00100000
+{
+  ER_IROM1 0x08000000 0x00100000
+  {
+    *.o (RESET, +First)
+    *(InRoot$$Sections)
+    .ANY (+RO)
+    .ANY (+XO)
+  }
+  ER_EKF_ITCM 0x00000000 0x00010000
+  {
+    * (.itcm_ekf*)
+  }
+  RW_EKF_DTCM 0x20000000 0x00020000
+  {
+    * (.bss.dtcm_ekf*)
+  }
+  RW_IRAM2 0x24000000 0x00050000
+  {
+    .ANY (+RW +ZI)
+  }
+}

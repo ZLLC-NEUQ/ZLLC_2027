@@ -1,0 +1,9 @@
+CompileFlags:
+  Add:
+    - -isystemc:\Users\HLlll\AppData\Local\Keil_v5\ARM\ARMCLANG/include
+    - -isystemc:\Users\HLlll\AppData\Local\Keil_v5\ARM\ARMCLANG/include/libcxx
+    - -isystemD:\keil_v5\ARM\ARMCLANG/include
+    - -isystemD:\keil_v5\ARM\ARMCLANG/include/libcxx
+  Remove: []
+  CompilationDatabase: ./build/ZLLC_2027
+  Compiler: D:\keil_v5\ARM\ARMCLANG\bin\armclang.exe
