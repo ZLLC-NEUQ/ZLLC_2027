@@ -1,6 +1,6 @@
 # 征龙凌沧27赛季嵌入式代码框架使用说明
 
-本工程基于 STM32H723VGTx，由上赛季 `ZLLC_2026` 裸机框架演进而来。保留原有驱动、设备、算法、底盘/云台/发射机构与整车交互分层，主要调整任务调度、数据交接、通信恢复和调试工具。
+本工程基于 STM32H723VGTx，由上赛季 `ZLLC_2026` 裸机框架演进而来。保留原有驱动、设备、算法、底盘/云台/发射机构与整车交互分层，主要调整任务调度、数据交接、通信恢复和调试工具，并更新 27 赛季裁判系统通信协议。
 
 对比基准为上赛季裸机工程 [ZLLC_2026（M65 分支）](https://github.com/ZLLC-NEUQ/ZLLC_2026/tree/M65)。本文更新于 2026-10-30；表格中的“当前实现”描述已有代码，“后续建议”描述下一步开发约定，尚未实现的能力不作为框架现有保证。
 
@@ -48,6 +48,7 @@
 | 数据交接 | IMU、控制和 UI 较多直接访问同一对象 | IMU 和 UI 用完整快照交接，计算态与消费态分离 | 减少半更新状态被读取； |
 | 在线检测 | 在线扫描和遥控存活状态机集中在 TIM5 回调 | 独立 Alive 任务：1ms 状态机、50ms 基础扫描及设备分频 | 与控制计算分开维护；共享状态仍需同步，不能只新建任务后直接并发读写 |
 | 错误恢复 | 已有 CAN Bus-Off 重启及遥控状态机中的 UART 重启，恢复入口较分散 | 错误 ISR 请求恢复，任务统一处理，加入待恢复标志、诊断和失败重试 | 恢复过程更可观察，避免 ISR 内等待； |
+| 裁判系统协议 | 使用上赛季报文布局和设备接口 | 按 2027 V1.0.0 更新数据结构，分链路流式解包，补充交互、地图和图传收发接口 | 适配新赛季字段和命令；迁移时需核对旧 getter 含义及实际端口接入情况 |
 | 调试工具 | 各文件散放 DWT 临时变量及测时代码 | Device 性能模块统一耗时、频率、复位、栈/堆余量和超周期统计 | 方便对比和裁剪； |
 | 热路径与内存 | 主要使用普通 Flash 和原动态算法工作区 | I-Cache 开启；EKF 可使用 ITCM 热函数和 DTCM 实际工作数组 | 改善选定计算路径；占用专用 RAM，并依赖正确链接和启动初始化 |
 | 工程维护 | 生成代码、应用入口和构建规则较依赖人工经验 | 原生 RTOS 配置、优先级及检查工具集中管理 | 有利于再生成和回归检查； |
@@ -139,6 +140,29 @@ USART1、UART5、USART10 统一由 [UART_Error_Service()](User/Driver/Src/drv_ua
 三路 CAN 由 [CAN_Error_Service()](User/Driver/Src/drv_can.cpp) 分路处理 Bus-Off 和严重 RAM 错误，失败后每 100ms 重试。一般 FIFO 满/空不会触发同样的重初始化。报文自动重传与故障恢复是不同机制，当前 `AutoRetransmission` 为关闭。
 
 GIMBAL 的上位机角度入口是 CAN1 标准 ID `0xA1`。前 6 字节为小端的 `alive:uint8`、`Fire:uint8`、`yaw:int16`、`pitch:int16`，角度按弧度乘以 10000 编码。只有 MINIPC 模式、通信在线和 `alive != 0` 同时成立时采用接收角度。USB 虽保留接口，但当前没有有效 MiniPC 解析，不能据此直接使用 USB 自瞄。
+
+### 27 赛季裁判系统通信协议
+
+裁判系统设备层已按《RoboMaster 2027 机甲大师高校系列赛通信协议 V1.0.0（20261029）》第 1 章机器人端协议更新，主要实现位于 [dvc_referee.h](User/Device/Inc/dvc_referee.h) 和 [dvc_referee.cpp](User/Device/Src/dvc_referee.cpp)。协议中的终端侧 MQTT / Protobuf 不属于本工程机器人串口解包器的实现范围。
+
+相较上赛季，已更新机器人状态、功率热量、BUFF、受击坐标、RFID、哨兵及雷达信息等结构，补充队内交互、小地图和自定义数据收发接口。接收器按 `0xA5` 帧格式处理连续字节流，支持分片和粘包，检查 CRC8、CRC16、命令所属链路及数据长度，并在错误后重新搜索帧头。各链路使用独立解析缓存。
+
+| 链路 | 设备层接收入口 | 当前接入情况 |
+| --- | --- | --- |
+| 常规裁判链路 | `UART_RxCpltCallback(data, length)` | `CHASSIS` 已通过 USART10 接入；电源管理模块 User 串口，115200、8N1 |
+| 图传自定义控制 | `Video_UART_RxCpltCallback(data, length)`，接收 `0x0311` | 已提供解析接口，实际 UART 需另行配置为 921600、8N1；发送前还需调用 `Init_Video_UART()` |
+| 雷达无线数据 | `Wireless_RxCpltCallback(data, length)`，接收 `0x0A01..0x0A06` | 已提供解析接口，需接入物理层解调后的协议字节流；本工程不实现射频解调 |
+
+迁移业务代码时重点核对：
+
+- `0x0201` 机器人状态更新为 17 字节，包含弹速上限；`0x0204` 的冷却、攻击增益和 `0x0209` 的 RFID 布局按新结构读取。
+- `0x0202` 前 8 字节为保留位。旧 `Get_Chassis_Voltage()`、`Get_Chassis_Current()`、`Get_Chassis_Power()` 为兼容接口，当前返回 0；实时电压、电流、功率应由电源或超电模块提供。缓冲能量和射击热量仍可读取。
+- 使用 `Get_*_Data()` 读取完整结构，`Get_Diagnostics()` 查看有效帧、CRC、长度和未知命令计数。常规裁判链路只有收到有效协议帧才更新在线检测依据。
+- 小地图 `0x0303` 区分接收次数和内容更新次数。按 `Get_Map_Command_Update_Count()` 判断新目标，可避免把服务器重复发送的相同内容反复作为新操作。
+
+新增 `Send_Interaction()`、`Send_Sentry_Command()`、`Send_Radar_Command()`、`Send_Map_*()` 和 `Send_Custom_Data()` 等任务上下文发送接口，均返回 `bool`。`true` 表示本地队列或 DMA 已接受，服务器处理结果仍需看反馈；`false` 时应根据参数、身份、限频、队列满或 UART 忙等原因处理重试。常规发送与 UI 共用复制数据的有界 DMA 队列，由现有 1ms 控制回调中的 `Referee_DMA_Service()` 推进；所有 `0x0301` 子内容共用至少 34ms 的发送间隔。图传 `0x0310` 使用独立的 309 字节整帧 DMA 缓冲。
+
+各命令字段、发送限制、图传接入示例和完整用法见 [2027 裁判系统机器人端接口](Docs/Referee_2027.md)。实际 UART/DMA、图传及无线链路仍需上机联调。
 
 ### 性能优化与内存位置
 
@@ -272,28 +296,6 @@ CAN3_Recovery_Diagnostics
 UART 看错误次数、`Recovery_Count`、`Restart_Failures`、最近错误和收发待恢复标志；CAN 看 `BusOff_Events`、重启尝试/成功/失败及 `Recovery_Pending`。CAN 的重启成功计数只表示 HAL 接受重启。恢复对象包含功能状态，调试时不要整体清零；它们不受性能宏裁剪。
 
 `ulUART_RxDropped` 覆盖 UART 入队/分帧等丢弃；`ulCAN_RxDropped` 来自目前未使用的 CAN 队列路径，不能当作当前 CAN ISR 的完整丢帧指标。
-
-### 宿主检查脚本
-
-在工程根目录运行，脚本的宿主编译产物写入临时目录：
-
-```powershell
-python Tools/check_performance.py --cxx C:/mingw64/bin/g++.exe
-python Tools/check_ekf_tcm.py --cxx C:/mingw64/bin/g++.exe
-python Tools/check_priorities.py --root .
-python Tools/check_cubemx.py --root .
-```
-
-| 脚本 | 前提与检查范围 |
-| --- | --- |
-| [check_performance.py](Tools/check_performance.py) | Python 3.6+ 和 GCC 兼容宿主 C++；检查实际统计实现、复位/回绕、内存绑定和宏裁剪；没有 `nm` 时跳过相应符号检查 |
-| [check_ekf_tcm.py](Tools/check_ekf_tcm.py) | Python 3.6+、Windows MinGW C++，要求 `sizeof(long)==4`；比较实际算法/矩阵源码的数值和工作区行为 |
-| [check_priorities.py](Tools/check_priorities.py) | 静态检查 IRQ、FromISR 路径、任务和 IOC 等约定，不是完整的 C/C++ 调用图分析 |
-| [check_cubemx.py](Tools/check_cubemx.py) | 检查 USER CODE、原生 RTOS、TIM6、IOC 和 Keil 配置，最后也调用优先级审查 |
-
-当前静态审查有待更新：`check_priorities.py` 的任务表尚未登记 `Task_1ms_Alive`，IRQ 白名单也未覆盖 CAN 恢复中的 `HAL_NVIC_EnableIRQ(irqn)`；`check_cubemx.py` 复用它，因此也会受影响。不能把脚本存在理解成当前所有检查都能通过，新增入口时应同步维护这些规则。
-
-宿主数值检查、ARM 编译和 map 检查各覆盖不同问题；实际耗时、TCM 冷启动、DMA 一致性及故障恢复仍需板级验证。本文更新只核对源码和文档，不代表完成新一轮硬件验收。
 
 ## 后续开发与书写规范
 
