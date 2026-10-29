@@ -466,6 +466,11 @@
               <FilePath>..\User\Device\Src\dvc_dwt.cpp</FilePath>
             </File>
             <File>
+              <FileName>dvc_performance.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>..\User\Device\Src\dvc_performance.cpp</FilePath>
+            </File>
+            <File>
               <FileName>dvc_imu.cpp</FileName>
               <FileType>8</FileType>
               <FilePath>..\User\Device\Src\dvc_imu.cpp</FilePath>

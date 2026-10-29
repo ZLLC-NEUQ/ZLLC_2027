@@ -1,11 +1,11 @@
 /**
  * @file drv_uart.h
- * @author cjw by yssickjgd
+ * @author HGCSJ
  * @brief UART通信初始化与配置流程
- * @version 0.1
- * @date 2025-07-1 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  * 
  */
 
@@ -56,16 +56,24 @@ struct Struct_UART_Manage_Object
     UART_Call_Back Callback_Function;
 };
 
-/* 调试器可查看 DR16 接收、重同步及重启失败情况。 */
+/* DR16 正常接收与帧边界诊断；错误恢复见 UART5_Recovery_Diagnostics。 */
 struct Struct_UART5_Rx_Diagnostics
 {
     volatile uint32_t Idle_Events;
     volatile uint32_t Overflow_Events;
+    volatile uint16_t Last_Size;
+};
+
+/* USART1 / UART5 / USART10 共用的恢复状态；业务功能不受性能测试宏裁剪。 */
+struct Struct_UART_Recovery_Diagnostics
+{
     volatile uint32_t Error_Events;
+    volatile uint32_t Recovery_Count;
     volatile uint32_t Restart_Failures;
     volatile uint32_t Last_Error;
-    volatile uint16_t Last_Size;
     volatile HAL_StatusTypeDef Last_Start_Status;
+    volatile uint8_t Rx_Restart_Pending;
+    volatile uint8_t Tx_Restart_Pending;
 };
 
 /* Exported variables --------------------------------------------------------*/
@@ -95,15 +103,19 @@ extern struct Struct_UART_Manage_Object UART10_Manage_Object;
 
 extern float temp_power;
 extern struct Struct_UART5_Rx_Diagnostics UART5_Rx_Diagnostics;
+extern struct Struct_UART_Recovery_Diagnostics UART1_Recovery_Diagnostics;
+extern struct Struct_UART_Recovery_Diagnostics UART5_Recovery_Diagnostics;
+extern struct Struct_UART_Recovery_Diagnostics UART10_Recovery_Diagnostics;
 
 /* Exported function declarations --------------------------------------------*/
 
 void UART_Init(UART_HandleTypeDef *huart, UART_Call_Back Callback_Function, uint16_t Rx_Buffer_Length);
 
-/* 仅由控制任务调用；错误中断只请求恢复，不在 ISR 内阻塞。 */
-void UART5_Rx_Service(void);
-uint8_t UART5_Rx_RecoveryPending(void);
+/* 每 1ms 由控制任务调用，三路串口共用恢复流程；错误中断只请求恢复。 */
+void UART_Error_Service(void);
+uint8_t UART_RecoveryPending(UART_HandleTypeDef *huart);
 
+/* 任务上下文的 DMA 发送入口，与错误恢复互斥；恢复期间返回 HAL_BUSY。 */
 uint8_t UART_Send_Data(UART_HandleTypeDef *huart, uint8_t *Data, uint16_t Length);
 
 void TIM_UART_PeriodElapsedCallback();

@@ -1,11 +1,12 @@
 /**
  * @file dvc_supercap.h
- * @author yssickjgd (yssickjgd@mail.ustc.edu.cn)
+ * @author HGCSJ by yssickjgd (yssickjgd@mail.ustc.edu.cn)
  * @brief 超级电容
- * @version 0.1
- * @date 2023-08-29 0.1 23赛季定稿, 由于哨兵无超级电容, 因此未启用
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright USTC-RoboWalker (c) 2022
+ * @copyright ZLLC 2027
+ * @note 原始来源：作者 yssickjgd (yssickjgd@mail.ustc.edu.cn)；版本 0.1；日期 2023-08-29 0.1 23赛季定稿, 由于哨兵无超级电容, 因此未启用；版权 USTC-RoboWalker (c) 2022。
  *
  */
 

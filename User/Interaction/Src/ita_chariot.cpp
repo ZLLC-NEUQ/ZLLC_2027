@@ -1,11 +1,11 @@
 /**
  * @file ita_chariot.cpp
- * @author cjw by yssickjgd
+ * @author HGCSJ
  * @brief 人机交互控制逻辑
- * @version 0.1
- * @date 2025-07-1 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  *
  */
 
@@ -372,7 +372,7 @@ void Class_Chariot::Control_Chassis()
             else
             {
                 //有大PITCH的情况下用
-                if (Gimbal.Motor_Pitch_2.Get_Now_Angle() > LOCK_PITCH + 0.13f && Gimbal.Motor_Pitch_2.Get_Now_Angle() < 3.13f)
+                if (Gimbal.Motor_Pitch_2.Get_Now_Angle() > LOCK_PITCH + 0.12f && Gimbal.Motor_Pitch_2.Get_Now_Angle() < 3.13f)
                 {
                     Chassis.Set_Chassis_Control_Type(Chassis_Control_Type_Drive);
                     Chassis.Set_Target_Omega(0.0f);
@@ -663,7 +663,7 @@ void Class_Chariot::Control_Gimbal()
                 Gimbal.Motor_Yaw.Set_LK_Motor_Control_Method(LK_Motor_Control_Method_IMU_ANGLE);
                 //Gimbal.Motor_Yaw.Set_LK_Motor_Control_Method(LK_Motor_Control_Method_ANGLE);
                 //有大PITCH的情况下用
-                if(Gimbal.Motor_Pitch_2.Get_Now_Angle() > LOCK_PITCH + 0.07f && Gimbal.Motor_Pitch_2.Get_Now_Angle() < 3.13f)
+                if(Gimbal.Motor_Pitch_2.Get_Now_Angle() > LOCK_PITCH + 0.12f && Gimbal.Motor_Pitch_2.Get_Now_Angle() < 3.13f)
                 {
                     //Gimbal.Set_Gimbal_Control_Type(Gimbal_Control_type_FOLD);
                     Gimbal.Motor_Yaw.Set_LK_Motor_Control_Method(LK_Motor_Control_Method_ANGLE_LOCK);
@@ -1143,8 +1143,6 @@ void Class_Chariot::Control_Booster()
 #endif
 
 uint8_t change_time = 0;
-uint32_t Last_Cnt_Omega;
-float Dt_Omega;
 float reference_angle = Reference_Angle;
 /**
  * @brief 计算回调函数
@@ -1213,11 +1211,6 @@ void Class_Chariot::TIM_Calculate_PeriodElapsedCallback()
 	{
 		//Chassis.Set_Target_Omega(Chassis.Get_Spin_Omega());
         //补充力控底盘
-        // Dt_Omega += DWT_GetDeltaT(&Last_Cnt_Omega);
-
-        // float Control_Omega = (4.0f + 1.0f * sinf(2.0 * PI * Dt_Omega)) * PI;
-
-        // Chassis.Set_Target_Omega(Control_Omega);
         Chassis.Set_Target_Omega(Chassis.Get_Spin_Omega());
 	}
     else if(Chassis.Get_Chassis_Control_Type() == Chassis_Control_Type_Drive)
@@ -1603,49 +1596,6 @@ void Class_Chariot::TIM_Alive_Protect_PeriodElapsedCallback()
 
 
 /**
- * @brief 离线保护函数
- *
- */
-void Class_Chariot::TIM_Unline_Protect_PeriodElapsedCallback()
-{
-    // 云台离线保护
-    #ifdef GIMBAL
-
-        if (DR16.Get_DR16_Status() == DR16_Status_DISABLE && VT13.Get_VT13_Status() == VT13_Status_DISABLE)
-        {
-            // 记录离线前一状态
-            Pre_Gimbal_Control_Type = Gimbal.Get_Gimbal_Control_Type();
-            Pre_Chassis_Control_Type = Chassis.Get_Chassis_Control_Type();
-            // 控制模块禁用
-            Gimbal.Set_Gimbal_Control_Type(Gimbal_Control_Type_DISABLE);
-            Booster.Set_Booster_Control_Type(Booster_Control_Type_DISABLE);
-            Chassis.Set_Chassis_Control_Type(Chassis_Control_Type_DISABLE);
-
-            // 遥控器中途断联导致错误，重启 DMA
-            UART5_Rx_Service();
-        }
-        else
-        {
-            // Gimbal.Set_Gimbal_Control_Type(Pre_Gimbal_Control_Type);
-            // Chassis.Set_Chassis_Control_Type(Pre_Chassis_Control_Type);
-        }
-
-    #endif
-
-    //底盘离线保护
-    #ifdef CHASSIS
-    if(Get_Gimbal_Status() == Gimbal_Status_DISABLE)
-    {
-        Chassis.Set_Target_Velocity_X(0);
-        Chassis.Set_Target_Velocity_Y(0);
-        Chassis.Set_Target_Omega(0);
-    }
-        
-    #endif
-
-}
-
-/**
  * @brief 底盘通讯在线判断回调函数
  *
  */
@@ -1687,9 +1637,10 @@ void Class_Chariot::TIM1msMod50_Gimbal_Communicate_Alive_PeriodElapsedCallback()
  * @brief 机器人遥控器离线控制状态转移函数
  *
  */
-void Class_FSM_Alive_Control::Reload_TIM_Status_PeriodElapsedCallback()
+void Class_FSM_Alive_Control::Reload_TIM_Status_PeriodElapsedCallback(uint32_t elapsed_ms)
 {
-    Status[Now_Status_Serial].Time++;
+    /* 状态驻留时间按实际毫秒累加，不依赖调用次数。 */
+    Status[Now_Status_Serial].Time += elapsed_ms;
 
     switch (Now_Status_Serial)
     {
@@ -1697,7 +1648,7 @@ void Class_FSM_Alive_Control::Reload_TIM_Status_PeriodElapsedCallback()
     case (0):
     {
         // 遥控器中途断联导致错误离线 跳转到 遥控器串口错误状态
-        if (UART5_Rx_RecoveryPending())
+        if (UART_RecoveryPending(&huart5))
         {
             Status[Now_Status_Serial].Time = 0;
             Set_Status(4);
@@ -1712,7 +1663,7 @@ void Class_FSM_Alive_Control::Reload_TIM_Status_PeriodElapsedCallback()
         }
 
         // 超过一秒的遥控器离线 跳转到 遥控器关闭状态
-        if (Status[Now_Status_Serial].Time > 1000)
+        if (Status[Now_Status_Serial].Time >= 1000U)
         {
             Status[Now_Status_Serial].Time = 0;
             Set_Status(1);
@@ -1730,6 +1681,13 @@ void Class_FSM_Alive_Control::Reload_TIM_Status_PeriodElapsedCallback()
             Chariot->Chassis.Set_Chassis_Control_Type(Chassis_Control_Type_DISABLE);
         }
 
+        /* 恢复尚未完成时不根据旧的在线标志恢复控制模式。 */
+        if (UART_RecoveryPending(&huart5))
+        {
+            Set_Status(4);
+            break;
+        }
+
         if (Chariot->DR16.Get_DR16_Status() == DR16_Status_ENABLE)
         {
             Chariot->Chassis.Set_Chassis_Control_Type(Chariot->Get_Pre_Chassis_Control_Type());
@@ -1738,18 +1696,12 @@ void Class_FSM_Alive_Control::Reload_TIM_Status_PeriodElapsedCallback()
             Set_Status(2);
         }
 
-        // 遥控器中途断联导致错误离线 跳转到 遥控器串口错误状态
-        if (UART5_Rx_RecoveryPending())
-        {
-            Status[Now_Status_Serial].Time = 0;
-            Set_Status(4);
-        }
     }
     break;
     // 遥控器在线状态
     case (2):
     {
-        if (UART5_Rx_RecoveryPending())
+        if (UART_RecoveryPending(&huart5))
         {
             Status[Now_Status_Serial].Time = 0;
             Set_Status(4);
@@ -1778,8 +1730,8 @@ void Class_FSM_Alive_Control::Reload_TIM_Status_PeriodElapsedCallback()
     // 遥控器串口错误状态
     case (4):
     {
-        /* UART5 驱动由控制任务统一恢复；成功后再退出错误状态。 */
-        if (!UART5_Rx_RecoveryPending())
+        /* UART 通用驱动由控制任务统一恢复；成功后再退出错误状态。 */
+        if (!UART_RecoveryPending(&huart5))
         {
             Status[Now_Status_Serial].Time = 0;
             Set_Status(0);
@@ -1789,9 +1741,9 @@ void Class_FSM_Alive_Control::Reload_TIM_Status_PeriodElapsedCallback()
     }
 }
 
-void Class_FSM_Alive_Control_VT13::Reload_TIM_Status_PeriodElapsedCallback()
+void Class_FSM_Alive_Control_VT13::Reload_TIM_Status_PeriodElapsedCallback(uint32_t elapsed_ms)
 {
-    Status[Now_Status_Serial].Time++;
+    Status[Now_Status_Serial].Time += elapsed_ms;
 
     switch (Now_Status_Serial)
     {
@@ -1799,10 +1751,11 @@ void Class_FSM_Alive_Control_VT13::Reload_TIM_Status_PeriodElapsedCallback()
         case (0):
         {
             // 遥控器中途断联导致错误离线 跳转到 遥控器串口错误状态
-            if (huart1.ErrorCode)
+            if (UART_RecoveryPending(&huart1))
             {
                 Status[Now_Status_Serial].Time = 0;
                 Set_Status(4);
+                break;
             }
 
             //转移为 在线状态
@@ -1813,7 +1766,7 @@ void Class_FSM_Alive_Control_VT13::Reload_TIM_Status_PeriodElapsedCallback()
             }
 
             //超过一秒的遥控器离线 跳转到 遥控器关闭状态
-            if(Status[Now_Status_Serial].Time > 1000)
+            if(Status[Now_Status_Serial].Time >= 1000U)
             {
                 Status[Now_Status_Serial].Time = 0;
                 Set_Status(1);
@@ -1831,6 +1784,12 @@ void Class_FSM_Alive_Control_VT13::Reload_TIM_Status_PeriodElapsedCallback()
                 Chariot->Chassis.Set_Chassis_Control_Type(Chassis_Control_Type_DISABLE);
             }
 
+            if (UART_RecoveryPending(&huart1))
+            {
+                Set_Status(4);
+                break;
+            }
+
             if (Chariot->VT13.Get_VT13_Status() == VT13_Status_ENABLE)
             {
                 Chariot->Chassis.Set_Chassis_Control_Type(Chariot->Get_Pre_Chassis_Control_Type());
@@ -1839,18 +1798,18 @@ void Class_FSM_Alive_Control_VT13::Reload_TIM_Status_PeriodElapsedCallback()
                 Set_Status(2);
             }
 
-            // 遥控器中途断联导致错误离线 跳转到 遥控器串口错误状态
-            if (huart1.ErrorCode)
-            {
-                Status[Now_Status_Serial].Time = 0;
-                Set_Status(4);
-            }
             
         }
         break;
         // 遥控器在线状态
         case (2):
         {
+            if (UART_RecoveryPending(&huart1))
+            {
+                Status[Now_Status_Serial].Time = 0;
+                Set_Status(4);
+                break;
+            }
             //转移为 刚离线状态
             if(Chariot->VT13.Get_VT13_Status() == VT13_Status_DISABLE)
             {
@@ -1874,13 +1833,12 @@ void Class_FSM_Alive_Control_VT13::Reload_TIM_Status_PeriodElapsedCallback()
         //遥控器串口错误状态
         case (4):
         {
-            HAL_UART_DMAStop(&huart1); // 停止以重启
-            //HAL_Delay(10); // 等待错误结束
-            HAL_UARTEx_ReceiveToIdle_DMA(&huart1, UART1_Manage_Object.Rx_Buffer, UART1_Manage_Object.Rx_Buffer_Length);
-
-            //处理完直接跳转到 离线检测状态
-            Status[Now_Status_Serial].Time = 0;
-            Set_Status(0);
+            /* 不在 Alive 任务内操作 DMA；等待 1ms 通用恢复服务完成。 */
+            if (!UART_RecoveryPending(&huart1))
+            {
+                Status[Now_Status_Serial].Time = 0;
+                Set_Status(0);
+            }
         }
         break;
     } 

@@ -1,10 +1,12 @@
 /**
  ******************************************************************************
  * @file    QuaternionEKF.h
- * @author  Wang Hongxi
- * @version V1.2.0
- * @date    2022/3/8
+ * @author Wang Hongxi
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  * @brief   attitude update with gyro bias estimate and chi-square test
+ * @copyright ZLLC 2027
+ * @note 原始来源：作者 Wang Hongxi；版本 V1.2.0；日期 2022/3/8。
  ******************************************************************************
  * @attention
  *

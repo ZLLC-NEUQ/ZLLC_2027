@@ -1,11 +1,11 @@
 /**
  * @file tsk_config_and_callback.h
- * @author cjw by yssickjgd
+ * @author HGCSJ
  * @brief
- * @version 0.1
- * @date 2025-07-01 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC_2026
+ * @copyright ZLLC 2027
  *
  */
 
@@ -55,7 +55,8 @@ extern "C" {
   void Task100us_TIM4_Callback(void);
   void Task_IMU_ApplyLatestSnapshot(void);
   void Task1ms_TIM5_Callback(void);
-  void Task50ms_Alive_Callback(void);
+  /* Alive 任务每 1ms 调用；run_module_scan 仅在到达 50ms 在线扫描周期时置 1。 */
+  void Task1ms_Alive_Callback(uint32_t elapsed_ms, uint8_t run_module_scan);
   void Task10ms_BoardComm_Callback(void);
   void Task_UI_PublishSnapshot(void);
   uint8_t Task_Control_IsReady(void);

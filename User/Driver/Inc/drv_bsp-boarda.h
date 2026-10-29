@@ -1,11 +1,10 @@
 // /**
 //  * @file drv_bsp-boarda.h
-//  * @author cjw by yssickjgd
+//  * @author HGCSJ by yssickjgd
 //  * @brief A板的板级支持包
-//  * @version 1.1
-//  * @date 2025-07-1 0.1 26赛季定稿
-//  * @date 202
-//  * @copyright ZLLC 2026
+//  * @version V1.1
+//  * @date 2026-10-30 27赛季定稿
+//  * @copyright ZLLC 2027
 //  */
 
 //#ifndef DRV_BOARDA_MPU6500_H

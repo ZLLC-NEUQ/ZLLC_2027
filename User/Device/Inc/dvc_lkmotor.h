@@ -1,11 +1,11 @@
 /**
  * @file dvc_LKmotor.h
- * @author lez
+ * @author HGCSJ by lez
  * @brief lk电机配置与操作
- * @version 0.11
- * @date 2025-12-5 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  *
  */
 

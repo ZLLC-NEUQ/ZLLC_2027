@@ -1,11 +1,11 @@
 /**
  * @file drv_can.h
- * @author cjw by yssickjgd
+ * @author HGCSJ
  * @brief CAN通信初始化与配置流程
- * @version 0.1
- * @date 2025-07-1 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  *
  */
 
@@ -21,6 +21,7 @@ extern "C"
 
 #include "stdlib.h"
 #include "string.h"
+#include "config.h"
   
 #ifdef STM32H723xx 
 #include "stm32h7xx_hal.h"
@@ -56,7 +57,9 @@ struct Struct_CAN_Rx_Buffer
 {
     FDCAN_RxHeaderTypeDef Header;
     uint8_t Data[8];
-    uint32_t Rx_Cycle;                 /**< 当前帧 ISR 取帧前采集的 DWT 周期，随帧交接 */
+#if PERFORMANCE_TEST_ENABLE
+    uint32_t Rx_Cycle;                 /**< 预留的队列接收时间戳，当前 CAN 在 ISR 直接解析。 */
+#endif
 };
 
 /**
@@ -76,6 +79,20 @@ struct Struct_CAN_Manage_Object
     CAN_Call_Back Callback_Function;
 };
 
+/** @brief 三路 CAN 独立的错误恢复统计，可直接在 Watch 中查看。 */
+struct Struct_CAN_Recovery_Diagnostics
+{
+    volatile uint32_t Error_Events;
+    volatile uint32_t BusOff_Events;
+    volatile uint32_t Restart_Attempts;
+    volatile uint32_t Restart_Successes; /**< HAL 已接受重启；物理总线仍需完成同步/Bus-Off 恢复。 */
+    volatile uint32_t Restart_Failures;
+    volatile uint32_t Last_Error;
+    volatile uint32_t Last_Error_Status_ITs;
+    volatile HAL_StatusTypeDef Last_Recovery_Status;
+    volatile uint32_t Recovery_Pending;
+};
+
 /* Exported variables ---------------------------------------------------------*/
 
 extern FDCAN_HandleTypeDef hfdcan1;
@@ -85,6 +102,10 @@ extern FDCAN_HandleTypeDef hfdcan3;
 extern Struct_CAN_Manage_Object CAN1_Manage_Object;
 extern Struct_CAN_Manage_Object CAN2_Manage_Object;
 extern Struct_CAN_Manage_Object CAN3_Manage_Object;
+
+extern Struct_CAN_Recovery_Diagnostics CAN1_Recovery_Diagnostics;
+extern Struct_CAN_Recovery_Diagnostics CAN2_Recovery_Diagnostics;
+extern Struct_CAN_Recovery_Diagnostics CAN3_Recovery_Diagnostics;
 
 extern uint8_t CAN1_0x1ff_Tx_Data[];
 extern uint8_t CAN1_0x1fe_Tx_Data[];
@@ -175,6 +196,9 @@ extern uint8_t CAN3_0x148_Tx_Data[8];
 /* Exported function declarations ---------------------------------------------*/
 
 void CAN_Init(FDCAN_HandleTypeDef *hcan, CAN_Call_Back Callback_Function);
+
+/* 由 1ms 控制任务调用；中断只记录错误并请求恢复。 */
+void CAN_Error_Service(void);
 
 uint8_t CAN_Send_Data(FDCAN_HandleTypeDef *hcan, uint16_t ID, uint8_t *Data, uint16_t Length);
 

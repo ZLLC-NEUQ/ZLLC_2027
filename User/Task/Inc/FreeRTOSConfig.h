@@ -28,8 +28,10 @@
 /**
  * @file FreeRTOSConfig.h
  * @brief FreeRTOS 内核配置文件（适配 STM32H723 + GCC + ARM_CM7 r0p1）
- * @version 1.0
- * @date 2026-07-28
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
+ * @author HGCSJ
+ * @copyright ZLLC 2027
  *
  * @note
  *  1. HAL 时基已从 SysTick 迁移到 TIM6，SysTick 完全交给 FreeRTOS。
@@ -86,6 +88,11 @@ extern uint32_t SystemCoreClock;
 #if (ROBOT_TASK_PRIORITY_IMU >= configMAX_PRIORITIES) || \
     (ROBOT_TASK_PRIORITY_BACKGROUND == 0U)
 #error "Robot task priorities must be above idle and below configMAX_PRIORITIES"
+#endif
+
+#if (ROBOT_TASK_PRIORITY_ALIVE == 0U) || \
+    (ROBOT_TASK_PRIORITY_ALIVE >= ROBOT_TASK_PRIORITY_CONTROL)
+#error "Alive task must be above idle and below control to serialize shared robot state"
 #endif
 
 // /* IMU 先发布快照，控制独占业务状态，后台处理 UI；接收任务已删除，中断直接投控制队列。 */

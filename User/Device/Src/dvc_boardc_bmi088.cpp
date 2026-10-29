@@ -1,11 +1,11 @@
 /**
  * @file dvc_boardc_bmi088.cpp
- * @author cjw by yssickjgd
+ * @author HGCSJ by yssickjgd
  * @brief bmi088通讯协议
- * @version 0.1
- * @date 2025-07-1 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  *
  */
 

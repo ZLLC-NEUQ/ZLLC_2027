@@ -1,3 +1,8 @@
+/**
+ * @file dvc_GraphicsSendTask.h
+ * @author HGCSJ
+ */
+
 #ifndef __GRAPHICS_SEND_TASK_H
 #define __GRAPHICS_SEND_TASK_H
 
@@ -18,7 +23,7 @@
 #define CRC_LEN 2		  // β��CRC16У��
 #define DRAWING_PACK 15	  // ��1��ͼ���ݰ�����
 
-#define REFEREE_DMA_TX_QUEUE_DEPTH 4
+#define REFEREE_DMA_TX_QUEUE_DEPTH 40
 #define REFEREE_DMA_MAX_PACKET_LEN SEND_MAX_SIZE
 
 typedef struct {
@@ -219,6 +224,10 @@ void GraphicSendtask(void);
 void Send_UIPack(uint16_t data_cmd_id, uint16_t SendID, uint16_t receiverID, uint8_t *data, uint16_t pack_len);
 void Send_toReferee(uint16_t cmd_id, uint16_t data_len);
 void Referee_DMA_EnqueuePacket(const uint8_t *data, uint16_t len);
+/* Task context only. Copies a complete frame; returns 1 on acceptance, 0 when full/invalid. */
+uint8_t Referee_DMA_TryEnqueuePacket(const uint8_t *data, uint16_t len);
+/* Shared USART10 DMA service; called by the 1 ms control task. */
+void Referee_DMA_Service(void);
 
 graphic_data_struct_t *Line_Draw(uint8_t layer, int Op_Type, uint16_t startx, uint16_t starty, uint16_t endx, uint16_t endy, uint16_t line_width, int color, uint8_t name[]);
 graphic_data_struct_t *Rectangle_Draw(uint8_t layer, int Op_Type, uint16_t startx, uint16_t starty, uint16_t endx, uint16_t endy, uint16_t line_width, int color, uint8_t name[]);

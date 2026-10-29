@@ -1,11 +1,11 @@
 /**
  * @file dvc_imu.h
- * @author cjw by wanghongxi
+ * @author HGCSJ
  * @brief imu
- * @version 0.1
- * @date 2025-07-1 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  *
  */
 
@@ -146,7 +146,6 @@ class Class_IMU
 
     //DWT计数
     float INS_DWT_Dt;
-    float INS_DWT_Dt_Sum;
     uint32_t INS_DWT_Count;
 
     uint8_t gyro_update_flag = 0;

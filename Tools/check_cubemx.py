@@ -177,7 +177,7 @@ def audit_keil(root):
 
     kernel = "Middlewares/Third_Party/FreeRTOS/Source/"
     required_sources = ["User/Task/Src/freertos_tasks.cpp", "User/Task/Src/tsk_config_and_callback.cpp",
-                        "User/Driver/Src/drv_tim.cpp"]
+                        "User/Driver/Src/drv_tim.cpp", "User/Device/Src/dvc_performance.cpp"]
     required_sources += [kernel + name + ".c" for name in
                          ("croutine", "event_groups", "list", "queue", "stream_buffer", "tasks", "timers")]
     required_sources += [kernel + "portable/MemMang/heap_4.c",

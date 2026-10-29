@@ -1,10 +1,14 @@
 /**
  * @file freertos_tasks.cpp
- * @brief 控制任务独占机器人状态；中断直接把接收消息投进控制队列，IMU 交接完整快照。
+ * @brief 控制任务处理业务，低优先级 Alive 任务在短临界区更新在线状态和遥控状态机。
+ * @author HGCSJ
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
+ * @copyright ZLLC 2027
  *
  * 接收链：ISR 构造 FreeRTOS_Control_RxMsg_t -> xQueue_Control_Rx -> 控制任务业务回调。
  * IMU 链：IMU 私有解算区 -> 最新完整快照 -> 控制侧 IMU 副本。
- * 在线检测、板间打包和 UI 快照均由控制任务按原周期执行。
+ * 1ms Alive 任务执行遥控状态机，并每 50ms 触发模块在线扫描；板间打包和 UI 快照由控制任务执行。
  */
 #include "freertos_tasks.h"
 #include "tsk_config_and_callback.h"
@@ -12,6 +16,7 @@
 #include "drv_uart.h"
 #include "drv_usb.h"
 #include "dvc_imu.h"
+#include "dvc_performance.h"
 #include "string.h"
 
 QueueHandle_t xQueue_Control_Rx = NULL;
@@ -21,8 +26,9 @@ QueueHandle_t xQueue_UI_Snapshot = NULL;
 volatile uint32_t ulCAN_RxDropped = 0;
 volatile uint32_t ulUART_RxDropped = 0;
 volatile uint32_t ulUSB_RxDropped = 0;
-volatile uint32_t ulControl_DeadlineMissed = 0;
+#if PERFORMANCE_TEST_ENABLE
 static uint32_t ulCurrentRxCycle = 0;
+#endif
 
 static void FreeRTOS_CreateObjects(void)
 {
@@ -37,15 +43,26 @@ static void FreeRTOS_CreateObjects(void)
 static void FreeRTOS_CreateTasks(void)
 {
     BaseType_t result;
+#if PERFORMANCE_TEST_ENABLE
+    TaskHandle_t imu_handle = NULL;
+    TaskHandle_t control_handle = NULL;
+    TaskHandle_t alive_handle = NULL;
+    TaskHandle_t background_handle = NULL;
+#endif
     result = xTaskCreate(Task_100us_Fast, "TaskIMU", configMINIMAL_STACK_SIZE,
-                         NULL, ROBOT_TASK_PRIORITY_IMU, NULL);
+                         NULL, ROBOT_TASK_PRIORITY_IMU, PERF_TASK_HANDLE_PTR(imu_handle));
     configASSERT(result == pdPASS);
     result = xTaskCreate(Task_1ms_Control, "TaskControl", configMINIMAL_STACK_SIZE * 2,
-                         NULL, ROBOT_TASK_PRIORITY_CONTROL, NULL);
+                         NULL, ROBOT_TASK_PRIORITY_CONTROL, PERF_TASK_HANDLE_PTR(control_handle));
+    configASSERT(result == pdPASS);
+    result = xTaskCreate(Task_1ms_Alive, "TaskAlive", configMINIMAL_STACK_SIZE,
+                         NULL, ROBOT_TASK_PRIORITY_ALIVE, PERF_TASK_HANDLE_PTR(alive_handle));
     configASSERT(result == pdPASS);
     result = xTaskCreate(Task_Background, "TaskBkgnd", configMINIMAL_STACK_SIZE * 2,
-                         NULL, ROBOT_TASK_PRIORITY_BACKGROUND, NULL);
+                         NULL, ROBOT_TASK_PRIORITY_BACKGROUND, PERF_TASK_HANDLE_PTR(background_handle));
     configASSERT(result == pdPASS);
+    PERF_MEMORY_BIND(imu_handle, control_handle, background_handle);
+    PERF_MEMORY_BIND_ALIVE(alive_handle);
 }
 
 void FreeRTOS_Start(void)
@@ -56,10 +73,12 @@ void FreeRTOS_Start(void)
     for (;;) {}
 }
 
+#if PERFORMANCE_TEST_ENABLE
 uint32_t FreeRTOS_GetRxCycle(void)
 {
     return ulCurrentRxCycle;
 }
+#endif
 
 BaseType_t FreeRTOS_SubmitUSBFromISR(const uint8_t *data, uint32_t length,
                                   BaseType_t *pxHigherPriorityTaskWoken)
@@ -116,7 +135,9 @@ static void FreeRTOS_DispatchUART(FreeRTOS_UART_RxMsg_t &message)
     if ((object != NULL) && (object->Callback_Function != NULL) &&
         (message.length > 0U) && (message.length <= sizeof(message.data)))
     {
+#if PERFORMANCE_TEST_ENABLE
         ulCurrentRxCycle = message.rx_cycle;
+#endif
         /* 直接解析消息副本；不写回仍被 DMA 使用的 Rx_Buffer。 */
         object->Callback_Function(message.data, message.length);
     }
@@ -154,7 +175,6 @@ static void FreeRTOS_ProcessControlInputs(void)
     }
 }
 
-uint32_t TIM4_delta = 0;
 void Task_100us_Fast(void *pvParameters)
 {
     (void)pvParameters;
@@ -165,11 +185,10 @@ void Task_100us_Fast(void *pvParameters)
     {
         vTaskDelayUntil(&lastWake, period);
         /* 历史入口名称保留，实际周期 1ms；这里只操作 IMU 私有解算区。 */
-        // taskENTER_CRITICAL();
-        uint32_t time1 = DWT_GetTimeline_us();
+        PERF_EVENT(IMU_Frequency);
+        PERF_START(IMU_Task_Timing);
         Task100us_TIM4_Callback();
-        TIM4_delta = DWT_GetTimeline_us() - time1;
-        // taskEXIT_CRITICAL();
+        PERF_STOP(IMU_Task_Timing);
     }
 }
 
@@ -178,21 +197,17 @@ void Task_1ms_Control(void *pvParameters)
     (void)pvParameters;
     const TickType_t period = pdMS_TO_TICKS(1U);
     TickType_t lastWake = xTaskGetTickCount();
-    TickType_t lastAlive = lastWake;
     TickType_t lastBoardComm = lastWake;
     TickType_t lastUI = lastWake;
     configASSERT(period > 0U);
     for (;;)
     {
         vTaskDelayUntil(&lastWake, period);
+        PERF_EVENT(Control_Frequency);
+        PERF_START(Control_Timing);
         const TickType_t now = xTaskGetTickCount();
         Task_IMU_ApplyLatestSnapshot();
         FreeRTOS_ProcessControlInputs();
-        if ((TickType_t)(now - lastAlive) >= pdMS_TO_TICKS(50U))
-        {
-            lastAlive = now;
-            Task50ms_Alive_Callback();
-        }
         if (Task_Control_IsReady() == 0U)
         {
             lastBoardComm = now;
@@ -208,22 +223,53 @@ void Task_1ms_Control(void *pvParameters)
             lastUI = now;
             Task_UI_PublishSnapshot();
         }
+#if PERFORMANCE_TEST_ENABLE
         if ((TickType_t)(xTaskGetTickCount() - lastWake) >= period)
         {
-            ++ulControl_DeadlineMissed;
+            PERF_CONTROL_DEADLINE_MISSED();
         }
+#endif
+        PERF_STOP(Control_Timing);
     }
 }
 
-float back_dt;
+void Task_1ms_Alive(void *pvParameters)
+{
+    (void)pvParameters;
+    const TickType_t period = pdMS_TO_TICKS(FREERTOS_ALIVE_PERIOD_MS);
+    const TickType_t modulePeriod = pdMS_TO_TICKS(FREERTOS_MODULE_ALIVE_PERIOD_MS);
+    TickType_t lastWake = xTaskGetTickCount();
+    TickType_t lastModuleAlive = lastWake;
+    uint32_t lastRunMs = HAL_GetTick();
+    configASSERT(period > 0U);
+    configASSERT(modulePeriod > 0U);
+    for (;;)
+    {
+        vTaskDelayUntil(&lastWake, period);
+        const uint32_t nowMs = HAL_GetTick();
+        const uint32_t elapsedMs = nowMs - lastRunMs;
+        lastRunMs = nowMs;
+        const TickType_t now = xTaskGetTickCount();
+        const uint8_t runModuleScan = (TickType_t)(now - lastModuleAlive) >= modulePeriod;
+        if (runModuleScan) { lastModuleAlive = now; }
+        PERF_EVENT(Alive_Frequency);
+        PERF_START(Alive_Timing);
+        Task1ms_Alive_Callback(elapsedMs, runModuleScan);
+        PERF_STOP(Alive_Timing);
+    }
+}
+
 void Task_Background(void *pvParameters)
 {
     (void)pvParameters;
     for (;;)
     {
-        static uint32_t last_back_cnt = 0;
-        back_dt = DWT_GetDeltaT(&last_back_cnt);
+        PERF_EVENT(Background_Frequency);
+        PERF_START(Background_Timing);
         Task_Loop();
+        PERF_STOP(Background_Timing);
+        /* 低频扫描置于 Task_Loop 的耗时测量区间之外。 */
+        PERF_MEMORY_POLL();
         vTaskDelay(pdMS_TO_TICKS(50U));
     }
 }

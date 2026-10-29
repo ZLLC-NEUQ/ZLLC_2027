@@ -1,11 +1,11 @@
 /**
  * @file dvc_referee.h
- * @author lez by yssickjgd
- * @brief PM01裁判系统
- * @version 0.1
- * @date 2024-07-1 0.1 24赛季定稿
+ * @author HGCSJ
+ * @brief RoboMaster 2027 V1.0.0 裁判系统机器人端协议
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2024
+ * @copyright ZLLC 2027
  *
  */
 
@@ -16,6 +16,7 @@
 
 #include "drv_uart.h"
 #include "limits.h"
+#include <stddef.h>
 #include "string.h"
 #include "config.h"
 /* Exported macros -----------------------------------------------------------*/
@@ -24,7 +25,8 @@ class Class_Chariot;
 
 //设定当前车车
 
-#define HERO_1            1
+#define HEAVY_1           1
+#define HERO_1            HEAVY_1 // compatibility alias; 2027 uses heavy robot
 #define ENGINEER_2        2
 #define INFANTRY_3        3
 #define INFANTRY_4        4
@@ -205,34 +207,46 @@ enum Enum_Referee_Data_Status : uint8_t
 enum Enum_Referee_Command_ID : uint16_t
 {
     Referee_Command_ID_GAME_STATUS = 0x0001,
-    Referee_Command_ID_GAME_RESULT,
-    Referee_Command_ID_GAME_ROBOT_HP,
-    Referee_Command_ID_GAME_DART_STATUS_DISABLED,
-    Referee_Command_ID_GAME_AI_DISABLED,
+    Referee_Command_ID_GAME_RESULT = 0x0002,
+    Referee_Command_ID_GAME_ROBOT_HP = 0x0003,
+    Referee_Command_ID_GAME_DART_STATUS_DISABLED = 0x0004,
+    Referee_Command_ID_GAME_AI_DISABLED = 0x0005,
     Referee_Command_ID_EVENT_DATA = 0x0101,
-    Referee_Command_ID_EVENT_SUPPLY,
-    Referee_Command_ID_EVENT_SUPPLY_REQUEST_DISABLED,
-    Referee_Command_ID_EVENT_REFEREE_WARNING,
-    Referee_Command_ID_EVENT_DART_REMAINING_TIME,
+    Referee_Command_ID_EVENT_SUPPLY = 0x0102, // legacy, not sent in 2027
+    Referee_Command_ID_EVENT_SUPPLY_REQUEST_DISABLED = 0x0103,
+    Referee_Command_ID_EVENT_REFEREE_WARNING = 0x0104,
+    Referee_Command_ID_EVENT_DART_REMAINING_TIME = 0x0105,
     Referee_Command_ID_ROBOT_STATUS = 0x0201,
-    Referee_Command_ID_ROBOT_POWER_HEAT,
-    Referee_Command_ID_ROBOT_POSITION,
-    Referee_Command_ID_ROBOT_BUFF,
-    Referee_Command_ID_ROBOT_AERIAL_ENERGY,
-    Referee_Command_ID_ROBOT_DAMAGE,
-    Referee_Command_ID_ROBOT_BOOSTER,
-    Referee_Command_ID_ROBOT_REMAINING_AMMO,
-    Referee_Command_ID_ROBOT_RFID,
-    Referee_Command_ID_ROBOT_DART_COMMAND,
-    Referee_Command_ID_ROBOT_Robot_Position,
-    Referee_Command_ID_ROBOT_Radar_Mark_Data,
-    Referee_Command_ID_ROBOT_Sentry_Info,
+    Referee_Command_ID_ROBOT_POWER_HEAT = 0x0202,
+    Referee_Command_ID_ROBOT_POSITION = 0x0203,
+    Referee_Command_ID_ROBOT_BUFF = 0x0204,
+    Referee_Command_ID_ROBOT_AERIAL_ENERGY = 0x0205, // legacy
+    Referee_Command_ID_ROBOT_DAMAGE = 0x0206,
+    Referee_Command_ID_ROBOT_BOOSTER = 0x0207,
+    Referee_Command_ID_ROBOT_REMAINING_AMMO = 0x0208,
+    Referee_Command_ID_ROBOT_RFID = 0x0209,
+    Referee_Command_ID_ROBOT_DART_COMMAND = 0x020A,
+    Referee_Command_ID_ROBOT_Robot_Position = 0x020B,
+    Referee_Command_ID_ROBOT_Radar_Mark_Data = 0x020C,
+    Referee_Command_ID_ROBOT_Sentry_Info = 0x020D,
     Referee_Command_ID_ROBOT_Radar_Info = 0x020E,
     Referee_Command_ID_INTERACTION = 0x0301,
-    Referee_Command_ID_INTERACTION_CUSTOM_CONTROLLER,
-    Referee_Command_ID_INTERACTION_RADAR_SEND,
-    Referee_Command_ID_INTERACTION_REMOTE_CONTROL,
-    Referee_Command_ID_INTERACTION_Client_RECEIVE,
+    Referee_Command_ID_INTERACTION_CUSTOM_CONTROLLER = 0x0302, // legacy
+    Referee_Command_ID_INTERACTION_RADAR_SEND = 0x0303, // legacy name: terminal -> robot
+    Referee_Command_ID_INTERACTION_MAP_COMMAND = 0x0303,
+    Referee_Command_ID_INTERACTION_REMOTE_CONTROL = 0x0304, // legacy
+    Referee_Command_ID_INTERACTION_Client_RECEIVE = 0x0305,
+    Referee_Command_ID_MAP_POSITION = 0x0305,
+    Referee_Command_ID_MAP_PATH = 0x0307,
+    Referee_Command_ID_MAP_ROBOT_DATA = 0x0308,
+    Referee_Command_ID_CUSTOM_DATA = 0x0310,
+    Referee_Command_ID_CUSTOM_COMMAND = 0x0311,
+    Referee_Command_ID_WIRELESS_POSITION = 0x0A01,
+    Referee_Command_ID_WIRELESS_HP = 0x0A02,
+    Referee_Command_ID_WIRELESS_AMMO = 0x0A03,
+    Referee_Command_ID_WIRELESS_STATE = 0x0A04,
+    Referee_Command_ID_WIRELESS_BUFF = 0x0A05,
+    Referee_Command_ID_WIRELESS_KEY = 0x0A06,
 };
 
 /**
@@ -387,7 +401,8 @@ enum Enum_Referee_Data_Event_Robot_Damage_Type
 {
     Referee_Data_Robot_Damage_Type_ARMOR_ATTACKED = 0,
     Referee_Data_Robot_Damage_Type_MODULE_OFFLINE,
-    Referee_Data_Robot_Damage_Type_BOOSTER_SPEED,
+    Referee_Data_Robot_Damage_Type_SUPERCAP_OFFLINE = 2,
+    Referee_Data_Robot_Damage_Type_BOOSTER_SPEED = 2, // obsolete alias
     Referee_Data_Robot_Damage_Type_BOOSTER_HEAT,
     Referee_Data_Robot_Damage_Type_CHASSIS_POWER,
     Referee_Data_Robot_Damage_Type_ARMOR_COLLISION,
@@ -432,8 +447,10 @@ enum Enum_Referee_Data_Robot_Dart_Command_Status : uint8_t
 enum Enum_Referee_Data_Robot_Dart_Command_Target : uint8_t
 {
     Referee_Data_Robot_Dart_Command_Target_OUTPOST = 0,
-    Referee_Data_Robot_Dart_Command_Target_BASE,
-    Referee_Data_Robot_Dart_Command_Target_Randam_BASE
+    Referee_Data_Robot_Dart_Command_Target_BASE = 1,
+    Referee_Data_Robot_Dart_Command_Target_Randam_BASE = 2,
+    Referee_Data_Robot_Dart_Command_Target_MOVING_BASE = 3,
+    Referee_Data_Robot_Dart_Command_Target_END_MOVING_BASE = 4,
 };
 
 /**
@@ -684,11 +701,11 @@ struct Struct_Referee_UART_Data
     uint8_t Sequence;
     uint8_t CRC_8;
     Enum_Referee_Command_ID Referee_Command_ID;
-    uint8_t Data[121];
+    uint8_t Data[300]; // maximum video-link payload; normal-link interaction remains <=118
 } __attribute__((packed));
 
 /**
- * @brief 裁判系统经过处理的数据, 0x0001比赛状态, 3Hz发送
+ * @brief 裁判系统经过处理的数据, 0x0001比赛状态, 1Hz发送
  *
  */
 struct Struct_Referee_Rx_Data_Game_Status
@@ -697,7 +714,6 @@ struct Struct_Referee_Rx_Data_Game_Status
     uint8_t Stage_Enum : 4;
     uint16_t Remaining_Time;
     uint64_t Timestamp;
-    uint16_t CRC_16;
 } __attribute__((packed));
 
 /**
@@ -707,24 +723,26 @@ struct Struct_Referee_Rx_Data_Game_Status
 struct Struct_Referee_Rx_Data_Game_Result
 {
     Enum_Referee_Game_Result Result;
-    uint16_t CRC_16;
 } __attribute__((packed));
 
 /**
- * @brief 裁判系统经过处理的数据, 0x0003机器人血量, 1Hz
+ * @brief 裁判系统经过处理的数据, 0x0003机器人血量, 3Hz
  *
  */
 struct Struct_Referee_Rx_Data_Game_Robot_HP
 {
-    uint16_t ally_1_robot_HP;//己方1号英雄机器人血量，若该机器人未上场或者被罚下，则血量为0，下文同理 
-    uint16_t ally_2_robot_HP;//己方2号工程机器人血量
-    uint16_t ally_3_robot_HP;//己方3号步兵机器人血量
+    uint16_t ally_1_robot_HP;
+    uint16_t reserved;
+    uint16_t ally_3_robot_HP;
     uint16_t ally_4_robot_HP;
-    uint16_t reserved;//保留位
+    int16_t damage_difference;
     uint16_t ally_7_robot_HP;
-    uint16_t ally_outpost_HP;//己方前哨站血量
-    uint16_t ally_base_HP;//己方基地血量
-    uint16_t CRC_16;
+    uint16_t outpost_R_HP;
+    uint16_t ally_base_HP;
+    uint16_t outpost_B_HP;
+    uint16_t enemy_base_HP;
+    uint16_t ally_control_degree;
+    uint16_t enemy_control_degree;
 } __attribute__((packed));
 
 /**
@@ -734,11 +752,11 @@ struct Struct_Referee_Rx_Data_Game_Robot_HP
 struct Struct_Referee_Rx_Data_Event_Data
 {
     uint32_t event_data;
-    uint16_t CRC_16;
+    uint32_t event_data_2;
 } __attribute__((packed));
 
 /**
- * @brief 裁判系统经过处理的数据, 0x0102补给站状态, 补给请求后对应发送
+ * @brief 裁判系统经过处理的数据, 0x0102旧版补给站状态，2027不使用
  *
  */
 struct Struct_Referee_Rx_Data_Event_Supply
@@ -747,7 +765,6 @@ struct Struct_Referee_Rx_Data_Event_Supply
     Enum_Referee_Data_Robots_ID Robot;
     Enum_Referee_Data_Event_Supply_Status Status;
     Enum_Referee_Data_Event_Supply_Ammo_Number Ammo_Number;
-    uint16_t CRC_16;
 } __attribute__((packed));
 
 /**
@@ -759,7 +776,6 @@ struct Struct_Referee_Rx_Data_Event_Referee_Warning
     Enum_Referee_Data_Event_Referee_Warning_Level Level;
     Enum_Referee_Data_Robots_ID Robot_ID;
     uint8_t Count;
-    uint16_t CRC_16;
 } __attribute__((packed));
 
 /**
@@ -769,11 +785,7 @@ struct Struct_Referee_Rx_Data_Event_Referee_Warning
 struct Struct_Referee_Rx_Data_Event_Dart_Remaining_Time
 {
     uint8_t Dart_Remaining_Time;
-    uint8_t  Dart_Recent_Target : 3;
-    uint16_t Dart_Info : 3;
-    uint16_t Dart_Target_Enum : 2;
-    uint16_t Reserved : 8;
-    uint16_t CRC_16;
+    uint16_t Dart_Info; // bits 0..2 last target, 3..5 hit count, 6..8 selected target
 } __attribute__((packed));
 
 /**
@@ -788,32 +800,31 @@ struct Struct_Referee_Rx_Data_Robot_Status
     uint16_t HP_Max;
     uint16_t Shooter_Barrel_Cooling_Value;
     uint16_t Shooter_Barrel_Heat_Limit;
-    uint16_t Chassis_Power_Limit; 
+    uint16_t Chassis_Power_Limit;
+    float Bullet_Speed_Limit;
     uint8_t PM01_Gimbal_Status_Enum : 1;
     uint8_t PM01_Chassis_Status_Enum : 1;
     uint8_t PM01_Booster_Status_Enum : 1;
     uint8_t Reserved : 5;
-    uint16_t CRC_16;
 } __attribute__((packed));
 
 /**
- * @brief 裁判系统经过处理的数据, 0x0202当前机器人实时功率热量, 50Hz发送
+ * @brief 裁判系统经过处理的数据, 0x0202当前机器人缓冲能量和热量, 10Hz发送
  * 电压mV, 电流mA
  *
  */
 struct Struct_Referee_Rx_Data_Robot_Power_Heat
 {
-    uint16_t Chassis_Voltage;
-    uint16_t Chassis_Current;
-    float Chassis_Power;
-    uint16_t Chassis_Energy_Buffer;
+    uint16_t Reserved_Voltage; // reserved in 2027; never a voltage measurement
+    uint16_t Reserved_Current;
+    float Reserved_Power;
+    uint16_t Chassis_Energy_Buffer; // J
     uint16_t Booster_17mm_1_Heat;
     uint16_t Booster_42mm_Heat;
-    uint16_t CRC_16;
 } __attribute__((packed));
 
 /**
- * @brief 裁判系统经过处理的数据, 0x0203当前机器人实时位置, 10Hz发送
+ * @brief 裁判系统经过处理的数据, 0x0203当前机器人实时位置, 1Hz发送
  *
  */
 struct Struct_Referee_Rx_Data_Robot_Position
@@ -821,11 +832,10 @@ struct Struct_Referee_Rx_Data_Robot_Position
     float Location_X;
     float Location_Y;
     float Location_Yaw;  //本机器人测速模块的朝向，单位：度。正北为 0 度
-    uint16_t CRC_16;
 } __attribute__((packed));
 
 /**
- * @brief 裁判系统经过处理的数据, 0x0204当前机器人增益, 1Hz发送
+ * @brief 裁判系统经过处理的数据, 0x0204当前机器人增益, 3Hz发送
  *
  */
 struct Struct_Referee_Rx_Data_Robot_Buff
@@ -835,19 +845,16 @@ struct Struct_Referee_Rx_Data_Robot_Buff
     uint8_t Defend_Buff_Rate ; //机器人防御增益（百分比，值为 50 表示 50%防御增益）
     uint8_t Vulnerability_Buff_Rate; //机器人负防御增益（百分比，值为 30 表示-30%防御增益）
     uint16_t Damage_Buff_Rate ; //机器人攻击增益（百分比，值为 50 表示 50%攻击增益）
-    uint8_t Energy_Left_Rate ; //机器人剩余能量值反馈
-    uint16_t CRC_16;
 } __attribute__((packed));
 
 /**
- * @brief 裁判系统经过处理的数据, 0x0205无人机可攻击时间, 10Hz发送
+ * @brief 裁判系统经过处理的数据, 0x0205旧版无人机可攻击时间，2027不使用
  *
  */
 struct Struct_Referee_Rx_Data_Robot_Aerial_Energy
 {
     uint8_t Airforce_status;  //空中机器人状态（0 为正在冷却，1 为冷却完毕，2 为正在空中支援）
     uint8_t Remaining_Time;
-    uint16_t CRC_16;
 } __attribute__((packed));
 
 /**
@@ -858,7 +865,9 @@ struct Struct_Referee_Rx_Data_Robot_Damage
 {
     uint8_t Armor_ID : 4;
     uint8_t Type_Enum : 4;
-    uint16_t CRC_16;
+    uint16_t Hit_Sequence;
+    int16_t Hit_Position_X; // mm, module local coordinates
+    int16_t Hit_Position_Y;
 } __attribute__((packed));
 
 /**
@@ -871,7 +880,6 @@ struct Struct_Referee_Rx_Data_Robot_Booster
     Enum_Referee_Data_Robot_Booster_Type Booster_Type;
     uint8_t Frequency;
     float Speed;
-    uint16_t CRC_16;
 } __attribute__((packed));
 
 /**
@@ -884,43 +892,21 @@ struct Struct_Referee_Rx_Data_Robot_Remaining_Ammo
     uint16_t Booster_Allowance_42mm;
     uint16_t Money;
     uint16_t projectile_allowance_fortress;
-    uint16_t CRC_16;
 } __attribute__((packed));
 
 /**
- * @brief 裁判系统经过处理的数据, 0x0209RFID状态信息, 1Hz发送
+ * @brief 裁判系统经过处理的数据, 0x0209RFID状态信息, 3Hz发送
  *
  */
 struct Struct_Referee_Rx_Data_Robot_RFID
 {
-    uint32_t Self_Base_Status_Enum : 1;
-    uint32_t Self_Highland_Status_Enum : 1;
-    uint32_t Opposite_Highland_Status_Enum : 1;
-    uint32_t Self_R3_B3_Status_Enum : 1;
-    uint32_t Opposite_R3_B3_Status_Enum : 1;
-    uint32_t Self_R4_B4_Status_Enum : 1;
-    uint32_t Opposite_R4_B4_Status_Enum : 1;
-    uint32_t Self_Energy_Status_Enum : 1;
-    uint32_t Self_Flyover_Status_Enum_Before : 1;
-    uint32_t Self_Flyover_Status_Enum_After : 1;
-    uint32_t Opposite_Flyover_Status_Enum_Before : 1;
-    uint32_t Opposite_Flyover_Status_Enum_After : 1;
-    uint32_t Self_Outpost_Status_Enum : 1;
-    uint32_t Self_HP_Status_Enum : 1;
-    uint32_t Self_Sentry_Patrol_Area_Enum : 1;
-    uint32_t Opposite_Sentry_Patrol_Area_Enum : 1;
-    uint32_t Self_Engineer_Status_Enum : 1;
-    uint32_t Opposite_Engineer_Status_Enum : 1;
-    uint32_t Self_Exchange_Area_Status_Enum : 1;
-    uint32_t Centre_Status_Enum : 1;
-    uint32_t Reserved : 12;
-    uint8_t rfid_status_2;//bit 0：对方地形跨越增益点（隧道）（靠近对方梯形高地较低处） bit 1：对方地形跨越增益点（隧道）（靠近对方梯形高地较高处）
-    uint16_t CRC_16;
+    uint32_t rfid_status;
+    uint16_t rfid_status_2;
 } __attribute__((packed));
 
 
 /**
- * @brief 裁判系统经过处理的数据, 0x020a飞镖状态, 10Hz发送
+ * @brief 裁判系统经过处理的数据, 0x020a飞镖状态, 3Hz发送
  *
  */
 struct Struct_Referee_Rx_Data_Robot_Dart_Command
@@ -929,7 +915,6 @@ struct Struct_Referee_Rx_Data_Robot_Dart_Command
     uint8_t Reserved;
     uint16_t Change_Target_Timestamp;
     uint16_t Last_Confirm_Timestamp;
-    uint16_t CRC_16;
 } __attribute__((packed));
 
 /**
@@ -941,14 +926,11 @@ struct Struct_Referee_Rx_Data_Robot_Dart_Command
  */
 struct Struct_Referee_Data_Interaction_Students
 {
-    uint16_t Header;
-    Enum_Referee_Data_Robots_ID Sender;
-    uint8_t Reserved_1;
-    Enum_Referee_Data_Robots_ID Receiver;
-    uint8_t Reserved_2;
-    uint8_t Data[112];
-    uint16_t CRC_16;
-}__attribute__((packed));
+    uint16_t Header; // subcommand
+    uint16_t Sender;
+    uint16_t Receiver;
+    uint8_t Data[112]; // actual length is stored separately, not always 112
+} __attribute__((packed));
 
 /**
  * @brief 裁判系统发送的数据, 0x0301图形删除交互信息, 用户自主发送
@@ -1108,10 +1090,243 @@ struct Struct_Referee_Tx_Data_Interaction_Client_Receive
  * @brief Specialized, 裁判系统
  *
  */
+// 2027 additional payloads. All multibyte fields use the STM32 little endian wire order.
+struct Struct_Referee_Rx_Data_Ground_Position
+{
+    float heavyengineer_x, heavyengineer_y;
+    float reserved_0, reserved_1;
+    float standard_3_x, standard_3_y;
+    float standard_4_x, standard_4_y;
+    float reserved_2, reserved_3;
+} __attribute__((packed));
+
+struct Struct_Referee_Rx_Data_Radar_Mark
+{
+    uint16_t mark_progress;
+} __attribute__((packed));
+
+struct Struct_Referee_Rx_Data_Sentry_Info
+{
+    uint32_t sentry_info;
+    uint16_t sentry_info_2;
+    uint64_t sentry_info_3;
+} __attribute__((packed));
+
+struct Struct_Referee_Rx_Data_Radar_Info
+{
+    uint8_t radar_info, radar_info_2;
+    uint16_t fortify_center_x, fortify_center_y, fortify_radius; // mm
+} __attribute__((packed));
+
+struct Struct_Referee_Rx_Data_Map_Command
+{
+    float target_position_x, target_position_y; // m
+    uint8_t cmd_keyboard, target_robot_id;
+    uint16_t cmd_source;
+} __attribute__((packed));
+
+struct Struct_Referee_Rx_Data_Custom_Command
+{
+    uint8_t data[60]; // team-defined binary payload, not Protobuf by default
+} __attribute__((packed));
+
+struct Struct_Referee_Rx_Data_Wireless_Position
+{
+    uint16_t positions[6][2]; // cm; slots: 1, reserved, 3, 4, reserved, 7
+} __attribute__((packed));
+
+struct Struct_Referee_Rx_Data_Wireless_HP
+{
+    uint16_t hp[6]; // slots: 1, reserved, 3, 4, reserved, 7
+} __attribute__((packed));
+
+struct Struct_Referee_Rx_Data_Wireless_Ammo
+{
+    uint16_t allowance[5]; // slots: 1, 3, 4, reserved, 7
+} __attribute__((packed));
+
+struct Struct_Referee_Rx_Data_Wireless_State
+{
+    uint16_t remaining_gold, total_gold;
+    uint32_t event_data, rfid_status;
+} __attribute__((packed));
+
+struct Struct_Referee_Rx_Data_Wireless_Buff
+{
+    Struct_Referee_Rx_Data_Robot_Buff buff[5]; // slots: 1, reserved, 3, 4, 7
+    uint8_t sentry_posture;
+    uint8_t robot_state[5]; // slots: 1, reserved, 3, 4, 7
+    uint16_t fortify_center_x, fortify_center_y, fortify_radius; // mm
+} __attribute__((packed));
+
+struct Struct_Referee_Rx_Data_Wireless_Key
+{
+    uint8_t key[6]; // ASCII, not NUL-terminated
+} __attribute__((packed));
+
+struct Struct_Referee_Tx_Data_Map_Position
+{
+    uint16_t positions[12][2]; // cm; enemy six slots then allied six slots (1, reserved, 3, 4, reserved, 7)
+} __attribute__((packed));
+
+struct Struct_Referee_Tx_Data_Map_Path
+{
+    uint8_t intention; // 1 attack, 2 defend, 3 move
+    uint16_t start_position_x, start_position_y; // dm
+    int8_t delta_x[49], delta_y[49]; // dm relative to previous point
+    uint16_t sender_id;
+} __attribute__((packed));
+
+struct Struct_Referee_Tx_Data_Map_Robot_Data
+{
+    uint16_t sender_id, receiver_id;
+    uint8_t user_data[30]; // 15 UTF-16LE code units; zero-pad unused bytes
+} __attribute__((packed));
+
+struct Struct_Referee_Tx_Data_Custom_Data
+{
+    uint8_t data[300];
+} __attribute__((packed));
+
+struct Struct_Referee_Tx_Data_Sentry_Command
+{
+    uint32_t sentry_cmd; // subcommand 0x0120; receiver 0x8080
+} __attribute__((packed));
+
+struct Struct_Referee_Tx_Data_Radar_Command
+{
+    uint8_t radar_cmd;
+    uint8_t password_cmd;
+    uint8_t password[6];
+    uint8_t armor_fortify_cmd;
+    uint16_t fortify_center_x, fortify_center_y; // mm
+} __attribute__((packed));
+
+// Fail at compile time if compiler packing or an edit changes a wire payload.
+static_assert(sizeof(Struct_Referee_Rx_Data_Game_Status) == 11, "2027 Game_Status wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Game_Result) == 1, "2027 Game_Result wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Game_Robot_HP) == 24, "2027 Game_Robot_HP wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Event_Data) == 8, "2027 Event_Data wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Event_Referee_Warning) == 3, "2027 Event_Referee_Warning wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Event_Dart_Remaining_Time) == 3, "2027 Event_Dart_Remaining_Time wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Robot_Status) == 17, "2027 Robot_Status wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Robot_Power_Heat) == 14, "2027 Robot_Power_Heat wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Robot_Position) == 12, "2027 Robot_Position wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Robot_Buff) == 7, "2027 Robot_Buff wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Robot_Damage) == 7, "2027 Robot_Damage wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Robot_Booster) == 7, "2027 Robot_Booster wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Robot_Remaining_Ammo) == 8, "2027 Robot_Remaining_Ammo wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Robot_RFID) == 6, "2027 Robot_RFID wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Robot_Dart_Command) == 6, "2027 Robot_Dart_Command wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Ground_Position) == 40, "2027 Ground_Position wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Radar_Mark) == 2, "2027 Radar_Mark wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Sentry_Info) == 14, "2027 Sentry_Info wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Radar_Info) == 8, "2027 Radar_Info wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Map_Command) == 12, "2027 Map_Command wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Custom_Command) == 60, "2027 Custom_Command wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Wireless_Position) == 24, "2027 Wireless_Position wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Wireless_HP) == 12, "2027 Wireless_HP wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Wireless_Ammo) == 10, "2027 Wireless_Ammo wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Wireless_State) == 12, "2027 Wireless_State wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Wireless_Buff) == 47, "2027 Wireless_Buff wire size");
+static_assert(sizeof(Struct_Referee_Rx_Data_Wireless_Key) == 6, "2027 Wireless_Key wire size");
+static_assert(sizeof(Struct_Referee_Tx_Data_Map_Position) == 48, "2027 Map_Position wire size");
+static_assert(sizeof(Struct_Referee_Tx_Data_Map_Path) == 105, "2027 Map_Path wire size");
+static_assert(sizeof(Struct_Referee_Tx_Data_Map_Robot_Data) == 34, "2027 Map_Robot_Data wire size");
+static_assert(sizeof(Struct_Referee_Tx_Data_Custom_Data) == 300, "2027 Custom_Data wire size");
+static_assert(sizeof(Struct_Referee_Tx_Data_Sentry_Command) == 4, "2027 Sentry_Command wire size");
+static_assert(sizeof(Struct_Referee_Tx_Data_Radar_Command) == 13, "2027 Radar_Command wire size");
+static_assert(sizeof(Struct_Referee_Data_Interaction_Students) == 118, "2027 interaction maximum size");
+static_assert(offsetof(Struct_Referee_Rx_Data_Robot_Status, Bullet_Speed_Limit) == 12, "2027 speed limit offset");
+
+enum Enum_Referee_Link
+{
+    Referee_Link_Normal = 0,
+    Referee_Link_Video,
+    Referee_Link_Wireless,
+};
+
+struct Struct_Referee_Rx_Stream
+{
+    uint8_t data[309]; // maximum 300-byte custom payload plus frame overhead
+    uint16_t length;
+};
+
+struct Struct_Referee_Diagnostics
+{
+    uint32_t valid_frames;
+    uint32_t crc8_errors;
+    uint32_t crc16_errors;
+    uint32_t length_errors;
+    uint32_t unknown_commands;
+    uint32_t interaction_frames;
+    uint32_t map_command_frames;
+    uint32_t custom_command_frames;
+};
+
 class Class_Referee
 {
 public:
+    // Complete wire snapshots; data validity/update counters are exposed by diagnostics.
+    const Struct_Referee_Rx_Data_Game_Status &Get_Game_Status_Data() const { return Game_Status; }
+    const Struct_Referee_Rx_Data_Game_Result &Get_Game_Result_Data() const { return Game_Result; }
+    const Struct_Referee_Rx_Data_Game_Robot_HP &Get_Game_Robot_HP_Data() const { return Game_Robot_HP; }
+    const Struct_Referee_Rx_Data_Event_Data &Get_Event_Data_Data() const { return Event_Data; }
+    const Struct_Referee_Rx_Data_Event_Referee_Warning &Get_Event_Referee_Warning_Data() const { return Event_Referee_Warning; }
+    const Struct_Referee_Rx_Data_Event_Dart_Remaining_Time &Get_Event_Dart_Remaining_Time_Data() const { return Event_Dart_Remaining_Time; }
+    const Struct_Referee_Rx_Data_Robot_Status &Get_Robot_Status_Data() const { return Robot_Status; }
+    const Struct_Referee_Rx_Data_Robot_Power_Heat &Get_Robot_Power_Heat_Data() const { return Robot_Power_Heat; }
+    const Struct_Referee_Rx_Data_Robot_Position &Get_Robot_Position_Data() const { return Robot_Position; }
+    const Struct_Referee_Rx_Data_Robot_Buff &Get_Robot_Buff_Data() const { return Robot_Buff; }
+    const Struct_Referee_Rx_Data_Robot_Damage &Get_Robot_Damage_Data() const { return Robot_Damage; }
+    const Struct_Referee_Rx_Data_Robot_Booster &Get_Robot_Booster_Data() const { return Robot_Booster; }
+    const Struct_Referee_Rx_Data_Robot_Remaining_Ammo &Get_Robot_Remaining_Ammo_Data() const { return Robot_Remaining_Ammo; }
+    const Struct_Referee_Rx_Data_Robot_RFID &Get_Robot_RFID_Data() const { return Robot_RFID; }
+    const Struct_Referee_Rx_Data_Robot_Dart_Command &Get_Robot_Dart_Command_Data() const { return Robot_Dart_Command; }
+    const Struct_Referee_Rx_Data_Ground_Position &Get_Ground_Position() const { return Ground_Position; }
+    const Struct_Referee_Rx_Data_Radar_Mark &Get_Radar_Mark() const { return Radar_Mark; }
+    const Struct_Referee_Rx_Data_Sentry_Info &Get_Sentry_Info() const { return Sentry_Info; }
+    const Struct_Referee_Rx_Data_Radar_Info &Get_Radar_Info() const { return Radar_Info; }
+    const Struct_Referee_Rx_Data_Map_Command &Get_Map_Command() const { return Map_Command; }
+    const Struct_Referee_Rx_Data_Custom_Command &Get_Custom_Command() const { return Custom_Command; }
+    const Struct_Referee_Rx_Data_Wireless_Position &Get_Wireless_Position() const { return Wireless_Position; }
+    const Struct_Referee_Rx_Data_Wireless_HP &Get_Wireless_HP() const { return Wireless_HP; }
+    const Struct_Referee_Rx_Data_Wireless_Ammo &Get_Wireless_Ammo() const { return Wireless_Ammo; }
+    const Struct_Referee_Rx_Data_Wireless_State &Get_Wireless_State() const { return Wireless_State; }
+    const Struct_Referee_Rx_Data_Wireless_Buff &Get_Wireless_Buff() const { return Wireless_Buff; }
+    const Struct_Referee_Rx_Data_Wireless_Key &Get_Wireless_Key() const { return Wireless_Key; }
+    const Struct_Referee_Data_Interaction_Students &Get_Interaction() const { return Interaction_Students; }
+    uint16_t Get_Interaction_Data_Length() const { return Interaction_Data_Length; }
+    uint32_t Get_RFID_Status() const { return Robot_RFID.rfid_status; }
+    uint16_t Get_RFID_Status_2() const { return Robot_RFID.rfid_status_2; }
+    bool Get_RFID_Bit(uint8_t bit) const { return bit < 32 && ((Robot_RFID.rfid_status >> bit) & 1U) != 0; }
+    bool Get_RFID_Bit_2(uint8_t bit) const { return bit < 16 && ((Robot_RFID.rfid_status_2 >> bit) & 1U) != 0; }
+    float Get_Bullet_Speed_Limit() const { return Robot_Status.Bullet_Speed_Limit; }
+    int16_t Get_Damage_Difference() const { return Game_Robot_HP.damage_difference; }
+    uint16_t Get_Ally_Control_Degree() const { return Game_Robot_HP.ally_control_degree; }
+    uint16_t Get_Enemy_Control_Degree() const { return Game_Robot_HP.enemy_control_degree; }
+    uint16_t Get_Hit_Sequence() const { return Robot_Damage.Hit_Sequence; }
+    int16_t Get_Hit_Position_X() const { return Robot_Damage.Hit_Position_X; }
+    int16_t Get_Hit_Position_Y() const { return Robot_Damage.Hit_Position_Y; }
+    const Struct_Referee_Diagnostics &Get_Diagnostics() const { return Diagnostics; }
+    uint32_t Get_Map_Command_Update_Count() const { return Map_Command_Update_Count; }
+    uint32_t Get_Map_Command_Receive_Count() const { return Map_Command_Receive_Count; }
+    uint32_t Get_Custom_Command_Receive_Count() const { return Custom_Command_Receive_Count; }
+    uint32_t Get_Interaction_Receive_Count() const { return Interaction_Receive_Count; }
+
     void Init(UART_HandleTypeDef *huart, uint8_t __Frame_Header = 0xa5);
+    void Init_Video_UART(UART_HandleTypeDef *huart);
+    void Video_UART_RxCpltCallback(uint8_t *data, uint16_t length);
+    void Wireless_RxCpltCallback(uint8_t *data, uint16_t length);
+
+    // Returns false when parameters, current UART state, or the protocol rate limit reject a send.
+    bool Send_Interaction(uint16_t receiver_id, uint16_t content_id, const uint8_t *data, uint16_t length);
+    bool Send_Sentry_Command(const Struct_Referee_Tx_Data_Sentry_Command &data);
+    bool Send_Radar_Command(const Struct_Referee_Tx_Data_Radar_Command &data);
+    bool Send_Map_Position(const Struct_Referee_Tx_Data_Map_Position &data);
+    bool Send_Map_Path(const Struct_Referee_Tx_Data_Map_Path &data);
+    bool Send_Map_Robot_Data(uint16_t receiver_id, const uint8_t *utf16_data, uint16_t byte_length);
+    bool Send_Custom_Data(const uint8_t *data, uint16_t length);
 
     inline uint16_t Get_Circle_Index(uint16_t index){return (index%UART_Manage_Object->Rx_Buffer_Length);}
     inline Enum_Referee_Status Get_Referee_Status();
@@ -1156,10 +1371,10 @@ public:
     inline float Get_Location_Y();
     inline float Get_Location_Yaw();
     inline uint8_t Get_HP_Recovery_Buff_Rate();
-    inline uint8_t Get_Booster_Cooling_Buff_Rate();
+    inline uint16_t Get_Booster_Cooling_Buff_Rate();
     inline uint8_t Get_Defend_Buff_Rate();
     inline uint8_t Get_Energy_Left_Rate();
-    inline uint8_t Get_Damage_Buff_Rate();
+    inline uint16_t Get_Damage_Buff_Rate();
     inline uint8_t Get_Aerial_Remaining_Time();
     inline uint8_t Get_Armor_Attacked_ID();
     inline Enum_Referee_Data_Event_Robot_Damage_Type Get_Attacked_Type();
@@ -1222,9 +1437,9 @@ protected:
     //初始化相关常量
 
     //绑定的UART
-    Struct_UART_Manage_Object *UART_Manage_Object;
+    Struct_UART_Manage_Object *UART_Manage_Object = nullptr;
     //数据包头标
-    uint8_t Frame_Header;
+    uint8_t Frame_Header = 0xA5;
 
     //常量
     uint8_t seq = 0;  //包序号
@@ -1241,59 +1456,83 @@ protected:
     //读变量
 
     //比赛状态
-    Struct_Referee_Rx_Data_Game_Status Game_Status;
+    Struct_Referee_Rx_Data_Game_Status Game_Status{};
     //比赛结果
-    Struct_Referee_Rx_Data_Game_Result Game_Result;
+    Struct_Referee_Rx_Data_Game_Result Game_Result{};
     //机器人血量
-    Struct_Referee_Rx_Data_Game_Robot_HP Game_Robot_HP;
+    Struct_Referee_Rx_Data_Game_Robot_HP Game_Robot_HP{};
     //场地事件
-    Struct_Referee_Rx_Data_Event_Data Event_Data;
+    Struct_Referee_Rx_Data_Event_Data Event_Data{};
     //补给站状态
-    Struct_Referee_Rx_Data_Event_Supply Event_Supply;
+    Struct_Referee_Rx_Data_Event_Supply Event_Supply{};
     //裁判警告信息
-    Struct_Referee_Rx_Data_Event_Referee_Warning Event_Referee_Warning;
+    Struct_Referee_Rx_Data_Event_Referee_Warning Event_Referee_Warning{};
     //飞镖15s倒计时
-    Struct_Referee_Rx_Data_Event_Dart_Remaining_Time Event_Dart_Remaining_Time;
+    Struct_Referee_Rx_Data_Event_Dart_Remaining_Time Event_Dart_Remaining_Time{};
     //机器人状态
-    Struct_Referee_Rx_Data_Robot_Status Robot_Status;
+    Struct_Referee_Rx_Data_Robot_Status Robot_Status{};
     //当前机器人实时功率热量
-    Struct_Referee_Rx_Data_Robot_Power_Heat Robot_Power_Heat;
+    Struct_Referee_Rx_Data_Robot_Power_Heat Robot_Power_Heat{};
     //当前机器人实时位置
-    Struct_Referee_Rx_Data_Robot_Position Robot_Position;
+    Struct_Referee_Rx_Data_Robot_Position Robot_Position{};
     //当前机器人增益
-    Struct_Referee_Rx_Data_Robot_Buff Robot_Buff;
+    Struct_Referee_Rx_Data_Robot_Buff Robot_Buff{};
     //无人机可攻击时间
-    Struct_Referee_Rx_Data_Robot_Aerial_Energy Robot_Aerial_Energy;
+    Struct_Referee_Rx_Data_Robot_Aerial_Energy Robot_Aerial_Energy{};
     //伤害情况
-    Struct_Referee_Rx_Data_Robot_Damage Robot_Damage;
+    Struct_Referee_Rx_Data_Robot_Damage Robot_Damage{};
     //子弹信息
-    Struct_Referee_Rx_Data_Robot_Booster Robot_Booster;
+    Struct_Referee_Rx_Data_Robot_Booster Robot_Booster{};
     //子弹剩余信息
-    Struct_Referee_Rx_Data_Robot_Remaining_Ammo Robot_Remaining_Ammo;
+    Struct_Referee_Rx_Data_Robot_Remaining_Ammo Robot_Remaining_Ammo{};
     // RFID状态信息
-    Struct_Referee_Rx_Data_Robot_RFID Robot_RFID;
+    Struct_Referee_Rx_Data_Robot_RFID Robot_RFID{};
     //飞镖状态
-    Struct_Referee_Rx_Data_Robot_Dart_Command Robot_Dart_Command;
+    Struct_Referee_Rx_Data_Robot_Dart_Command Robot_Dart_Command{};
     //客户端接收小地图交互信息
-    Struct_Referee_Tx_Data_Interaction_Client_Receive Interaction_Client_Receive;
+    Struct_Referee_Tx_Data_Interaction_Client_Receive Interaction_Client_Receive{};
 
-    Struct_Referee_Data_Interaction_Students Interaction_Students;
+    Struct_Referee_Data_Interaction_Students Interaction_Students{};
+    Struct_Referee_Rx_Data_Ground_Position Ground_Position{};
+    Struct_Referee_Rx_Data_Radar_Mark Radar_Mark{};
+    Struct_Referee_Rx_Data_Sentry_Info Sentry_Info{};
+    Struct_Referee_Rx_Data_Radar_Info Radar_Info{};
+    Struct_Referee_Rx_Data_Map_Command Map_Command{};
+    Struct_Referee_Rx_Data_Custom_Command Custom_Command{};
+    Struct_Referee_Rx_Data_Wireless_Position Wireless_Position{};
+    Struct_Referee_Rx_Data_Wireless_HP Wireless_HP{};
+    Struct_Referee_Rx_Data_Wireless_Ammo Wireless_Ammo{};
+    Struct_Referee_Rx_Data_Wireless_State Wireless_State{};
+    Struct_Referee_Rx_Data_Wireless_Buff Wireless_Buff{};
+    Struct_Referee_Rx_Data_Wireless_Key Wireless_Key{};
+    uint16_t Interaction_Data_Length = 0;
+    uint32_t Interaction_Receive_Count = 0;
+    uint32_t Map_Command_Update_Count = 0;
+    uint32_t Map_Command_Receive_Count = 0;
+    uint32_t Custom_Command_Receive_Count = 0;
+    Struct_Referee_Rx_Stream Rx_Streams[3]{};
+    Struct_Referee_Diagnostics Diagnostics{};
+    Struct_UART_Manage_Object *Video_UART_Manage_Object = nullptr;
+    uint8_t Video_Tx_Buffer[309]{};
+    uint8_t Video_seq = 0;
+    uint32_t Tx_Last_Tick[5]{};
+    bool Tx_Has_Sent[5]{};
     // 写变量
 
     // 图形删除交互信息
-    Struct_Referee_Tx_Data_Interaction_Layer_Delete Interaction_Layer_Delete;
+    Struct_Referee_Tx_Data_Interaction_Layer_Delete Interaction_Layer_Delete{};
     //画一个图形交互信息
-    Struct_Referee_Tx_Data_Interaction_Graphic_1 Interaction_Graphic_1;
+    Struct_Referee_Tx_Data_Interaction_Graphic_1 Interaction_Graphic_1{};
     //画两个图形交互信息
-    Struct_Referee_Tx_Data_Interaction_Graphic_2 Interaction_Graphic_2;
+    Struct_Referee_Tx_Data_Interaction_Graphic_2 Interaction_Graphic_2{};
     //画五个图形交互信息
-    Struct_Referee_Tx_Data_Interaction_Graphic_5 Interaction_Graphic_5;
+    Struct_Referee_Tx_Data_Interaction_Graphic_5 Interaction_Graphic_5{};
     //画七个图形交互信息
-    Struct_Referee_Tx_Data_Interaction_Graphic_7 Interaction_Graphic_7;
+    Struct_Referee_Tx_Data_Interaction_Graphic_7 Interaction_Graphic_7{};
     //画字符图形交互信息
-    Struct_Referee_Tx_Data_Interaction_Graphic_String Interaction_Graphic_String;
+    Struct_Referee_Tx_Data_Interaction_Graphic_String Interaction_Graphic_String{};
     //雷达发送小地图交互信息
-    Struct_Referee_Tx_Data_Interaction_Radar_Send Interaction_Radar_Send;
+    Struct_Referee_Tx_Data_Interaction_Radar_Send Interaction_Radar_Send{};
 
     //读写变量
 
@@ -1301,6 +1540,10 @@ protected:
     uint8_t Verify_CRC_8(uint8_t *Message, uint32_t Length);
     uint16_t Verify_CRC_16(uint8_t *Message, uint32_t Length);
     void Data_Process(uint8_t *Rx_Data, uint16_t Length);
+    void Process_Stream(Enum_Referee_Link link, const uint8_t *data, uint16_t length);
+    bool Dispatch_Frame(Enum_Referee_Link link, uint16_t command_id, const uint8_t *data, uint16_t length);
+    bool Send_Frame(uint16_t command_id, const uint8_t *data, uint16_t length, Enum_Referee_Link link);
+    bool Check_Send_Rate(uint8_t slot, uint32_t interval_ms);
     
 };
 
@@ -1418,23 +1661,24 @@ Enum_Referee_Game_Result Class_Referee::Get_Result()
  */
 uint16_t Class_Referee::Get_HP(Enum_Referee_Data_Robots_ID Robots_ID)
 {
-    switch (Robots_ID)
+    const uint16_t id = static_cast<uint16_t>(Robots_ID);
+    if (id == 11U) return Game_Robot_HP.outpost_R_HP;
+    if (id == 111U) return Game_Robot_HP.outpost_B_HP;
+    const uint16_t own = static_cast<uint16_t>(Robot_Status.Robot_ID);
+    if (own == 0U) return 0; // side is unknown before a robot-status packet
+    const bool own_blue = own >= 100U;
+    const bool target_blue = id >= 100U;
+    const uint16_t local_id = target_blue ? id - 100U : id;
+    if (local_id == 10U)
+        return own_blue == target_blue ? Game_Robot_HP.ally_base_HP : Game_Robot_HP.enemy_base_HP;
+    if (own_blue != target_blue) return 0; // enemy robot HP is only available on radar wireless link
+    switch (local_id)
     {
-    case (Referee_Data_Robots_ID_RED_HERO_1):
-        return (Game_Robot_HP.ally_1_robot_HP);
-    case (Referee_Data_Robots_ID_RED_ENGINEER_2):
-        return (Game_Robot_HP.ally_2_robot_HP);
-    case (Referee_Data_Robots_ID_RED_INFANTRY_3):
-        return (Game_Robot_HP.ally_3_robot_HP);
-    case (Referee_Data_Robots_ID_RED_INFANTRY_4):
-        return (Game_Robot_HP.ally_4_robot_HP);
-    case (Referee_Data_Robots_ID_RED_SENTRY_7):
-        return (Game_Robot_HP.ally_7_robot_HP);
-    case (Referee_Data_Robots_ID_RED_OUTPOST_11):
-        return (Game_Robot_HP.ally_outpost_HP);
-    case (Referee_Data_Robots_ID_RED_BASE_10):
-        return (Game_Robot_HP.ally_base_HP);
-    
+    case 1: return Game_Robot_HP.ally_1_robot_HP;
+    case 3: return Game_Robot_HP.ally_3_robot_HP;
+    case 4: return Game_Robot_HP.ally_4_robot_HP;
+    case 7: return Game_Robot_HP.ally_7_robot_HP;
+    default: return 0; // reserved / not included in 0x0003
     }
 }
 
@@ -1450,7 +1694,7 @@ uint16_t Class_Referee::Get_HP(Enum_Referee_Data_Robots_ID Robots_ID)
  */
 uint8_t Class_Referee::Get_Supply_ID()
 {
-    return (Event_Supply.Robot);
+    return 0; // legacy 0x0102 absent in 2027
 }
 
 /**
@@ -1460,7 +1704,7 @@ uint8_t Class_Referee::Get_Supply_ID()
  */
 Enum_Referee_Data_Robots_ID Class_Referee::Get_Supply_Request_Robot()
 {
-    return (Event_Supply.Robot);
+    return Referee_Data_Robots_ID_NO; // legacy 0x0102 absent
 }
 
 /**
@@ -1470,7 +1714,7 @@ Enum_Referee_Data_Robots_ID Class_Referee::Get_Supply_Request_Robot()
  */
 Enum_Referee_Data_Event_Supply_Status Class_Referee::Get_Supply_Request_Status()
 {
-    return (Event_Supply.Status);
+    return Referee_Data_Event_Supply_Status_CLOSED; // legacy 0x0102 absent
 }
 
 /**
@@ -1480,7 +1724,7 @@ Enum_Referee_Data_Event_Supply_Status Class_Referee::Get_Supply_Request_Status()
  */
 Enum_Referee_Data_Event_Supply_Ammo_Number Class_Referee::Get_Supply_Ammo_Number()
 {
-    return (Event_Supply.Ammo_Number);
+    return static_cast<Enum_Referee_Data_Event_Supply_Ammo_Number>(0); // legacy 0x0102 absent
 }
 
 /**
@@ -1560,13 +1804,7 @@ uint16_t Class_Referee::Get_HP_Max()
  */
 uint16_t Class_Referee::Get_Booster_17mm_1_Heat_CD()
 {
-#ifdef Robot_SENTRY_7
-    if (Robot_Status.Booster_17mm_1_Heat_CD == 0)
-    {
-        return (40);
-    }
-#endif
-    return (Robot_Status.Shooter_Barrel_Cooling_Value);
+    return Robot_Status.Shooter_Barrel_Cooling_Value;
 }
 
 /**
@@ -1576,13 +1814,7 @@ uint16_t Class_Referee::Get_Booster_17mm_1_Heat_CD()
  */
 uint16_t Class_Referee::Get_Booster_17mm_1_Heat_Max()
 {
-#ifdef Robot_SENTRY_7
-    if (Robot_Status.Booster_17mm_1_Heat_Max == 0)
-    {
-        return (240);
-    }
-#endif
-    return (Robot_Status.Shooter_Barrel_Heat_Limit);
+    return Robot_Status.Shooter_Barrel_Heat_Limit;
 }
 
 /**
@@ -1613,18 +1845,7 @@ uint16_t Class_Referee::Get_Booster_42mm_Heat_Max()
  */
 uint16_t Class_Referee::Get_Chassis_Power_Max()
 {
-#ifdef Robot_SENTRY_7
-    if (Robot_Status.Chassis_Power_Max == 0)
-    {
-        //裁判系统如果寄了
-        return (80);
-        // //高校联盟赛
-        // return (100);
-        // //超级对抗赛
-        // return (150);
-    }
-#endif
-    return (Robot_Status.Chassis_Power_Limit);
+    return Robot_Status.Chassis_Power_Limit;
 }
 
 /**
@@ -1664,7 +1885,7 @@ Enum_Referee_Data_Status Class_Referee::Get_PM01_Booster_Status()
  */
 float Class_Referee::Get_Chassis_Voltage()
 {
-    return (Robot_Power_Heat.Chassis_Voltage / 1000.0f);
+    return 0.0f; // unavailable in 2027; measure using the power/supercapacitor module
 }
 
 /**
@@ -1674,7 +1895,7 @@ float Class_Referee::Get_Chassis_Voltage()
  */
 float Class_Referee::Get_Chassis_Current()
 {
-    return (Robot_Power_Heat.Chassis_Current / 1000.0f);
+    return 0.0f; // unavailable in 2027; measure using the power/supercapacitor module
 }
 
 /**
@@ -1684,7 +1905,7 @@ float Class_Referee::Get_Chassis_Current()
  */
 float Class_Referee::Get_Chassis_Power()
 {
-    return (Robot_Power_Heat.Chassis_Power);
+    return 0.0f; // unavailable in 2027; measure using the power/supercapacitor module
 }
 
 /**
@@ -1763,9 +1984,9 @@ uint8_t Class_Referee::Get_HP_Recovery_Buff_Rate()
  *
  * @return Enum_Referee_Data_Status 冷却缩减buff状态
  */
-uint8_t Class_Referee::Get_Booster_Cooling_Buff_Rate()
+uint16_t Class_Referee::Get_Booster_Cooling_Buff_Rate()
 {
-    return (Robot_Buff.Booster_Cooling_Buff_Rate);
+    return Robot_Buff.Booster_Cooling_Buff_Rate;
 }
 
 /**
@@ -1785,7 +2006,7 @@ uint8_t Class_Referee::Get_Defend_Buff_Rate()
  */
 uint8_t Class_Referee::Get_Energy_Left_Rate()
 {
-    return (Robot_Buff.Energy_Left_Rate);
+    return 0; // this legacy field is absent from the 2027 buff payload
 }
 
 /**
@@ -1793,9 +2014,9 @@ uint8_t Class_Referee::Get_Energy_Left_Rate()
  *
  * @return Enum_Referee_Data_Status 攻击加成buff状态
  */
-uint8_t Class_Referee::Get_Damage_Buff_Rate()
+uint16_t Class_Referee::Get_Damage_Buff_Rate()
 {
-    return (Robot_Buff.Damage_Buff_Rate);
+    return Robot_Buff.Damage_Buff_Rate;
 }
 
 /**
@@ -1805,7 +2026,7 @@ uint8_t Class_Referee::Get_Damage_Buff_Rate()
  */
 uint8_t Class_Referee::Get_Aerial_Remaining_Time()
 {
-    return (Robot_Aerial_Energy.Remaining_Time);
+    return 0; // 0x0205 is not part of the 2027 protocol
 }
 
 /**
@@ -1905,7 +2126,8 @@ uint16_t Class_Referee::Get_Money_Remaining()
  */
 Enum_Referee_Data_Status Class_Referee::Get_Self_Base_RFID_Status()
 {
-    return (static_cast<Enum_Referee_Data_Status>(Robot_RFID.Self_Base_Status_Enum));
+    const uint8_t bit = static_cast<uint16_t>(Robot_Status.Robot_ID) >= 100U ? 3U : 2U;
+    return static_cast<Enum_Referee_Data_Status>(Get_RFID_Bit(bit));
 }
 
 /**
@@ -1915,7 +2137,7 @@ Enum_Referee_Data_Status Class_Referee::Get_Self_Base_RFID_Status()
  */
 Enum_Referee_Data_Status Class_Referee::Get_Self_Highland_RFID_Status()
 {
-    return (static_cast<Enum_Referee_Data_Status>(Robot_RFID.Self_Highland_Status_Enum));
+    return Referee_Data_Status_DISABLE; // no unambiguous 2027 equivalent; use Get_RFID_Bit[_2] with the table 1-19 bit
 }
 
 /**
@@ -1925,7 +2147,7 @@ Enum_Referee_Data_Status Class_Referee::Get_Self_Highland_RFID_Status()
  */
 Enum_Referee_Data_Status Class_Referee::Get_Self_Energy_RFID_Status()
 {
-    return (static_cast<Enum_Referee_Data_Status>(Robot_RFID.Self_Energy_Status_Enum));
+    return Referee_Data_Status_DISABLE; // no unambiguous 2027 equivalent; use Get_RFID_Bit[_2] with the table 1-19 bit
 }
 
 /**
@@ -1935,7 +2157,7 @@ Enum_Referee_Data_Status Class_Referee::Get_Self_Energy_RFID_Status()
  */
 Enum_Referee_Data_Status Class_Referee::Get_Self_Flyover_RFID_Status_Before()
 {
-    return (static_cast<Enum_Referee_Data_Status>(Robot_RFID.Self_Flyover_Status_Enum_Before));
+    return Referee_Data_Status_DISABLE; // no unambiguous 2027 equivalent; use Get_RFID_Bit[_2] with the table 1-19 bit
 }
 
 /**
@@ -1945,7 +2167,7 @@ Enum_Referee_Data_Status Class_Referee::Get_Self_Flyover_RFID_Status_Before()
  */
 Enum_Referee_Data_Status Class_Referee::Get_Self_Flyover_RFID_Status_After()
 {
-    return (static_cast<Enum_Referee_Data_Status>(Robot_RFID.Self_Flyover_Status_Enum_After));
+    return Referee_Data_Status_DISABLE; // no unambiguous 2027 equivalent; use Get_RFID_Bit[_2] with the table 1-19 bit
 }
 
 /**
@@ -1955,7 +2177,8 @@ Enum_Referee_Data_Status Class_Referee::Get_Self_Flyover_RFID_Status_After()
  */
 Enum_Referee_Data_Status Class_Referee::Get_Self_Outpost_RFID_Status()
 {
-    return (static_cast<Enum_Referee_Data_Status>(Robot_RFID.Self_Outpost_Status_Enum));
+    const uint8_t bit = static_cast<uint16_t>(Robot_Status.Robot_ID) >= 100U ? 9U : 8U;
+    return static_cast<Enum_Referee_Data_Status>(Get_RFID_Bit(bit)); // own starting-side outpost card
 }
 
 /**
@@ -1965,7 +2188,7 @@ Enum_Referee_Data_Status Class_Referee::Get_Self_Outpost_RFID_Status()
  */
 Enum_Referee_Data_Status Class_Referee::Get_Self_HP_RFID_Status()
 {
-    return (static_cast<Enum_Referee_Data_Status>(Robot_RFID.Self_HP_Status_Enum));
+    return static_cast<Enum_Referee_Data_Status>(Get_RFID_Bit(0)); // own supply zone
 }
 
 /**
@@ -1975,7 +2198,7 @@ Enum_Referee_Data_Status Class_Referee::Get_Self_HP_RFID_Status()
  */
 Enum_Referee_Data_Status Class_Referee::Get_Self_Engineer_RFID_Status()
 {
-    return (static_cast<Enum_Referee_Data_Status>(Robot_RFID.Self_Engineer_Status_Enum));
+    return Referee_Data_Status_DISABLE; // no unambiguous 2027 equivalent; use Get_RFID_Bit[_2] with the table 1-19 bit
 }
 
 /**
@@ -1995,7 +2218,7 @@ Enum_Referee_Data_Robot_Dart_Command_Status Class_Referee::Get_Dart_Command_Stat
  */
 Enum_Referee_Data_Robot_Dart_Command_Target Class_Referee::Get_Dart_Command_Target()
 {
-    return  (static_cast<Enum_Referee_Data_Robot_Dart_Command_Target>(Event_Dart_Remaining_Time.Dart_Target_Enum));
+    return static_cast<Enum_Referee_Data_Robot_Dart_Command_Target>((Event_Dart_Remaining_Time.Dart_Info >> 6) & 0x07U);
 }
 
 /**
@@ -2025,7 +2248,7 @@ uint16_t Class_Referee::Get_Dart_Last_Confirm_Timestamp()
  */
 Enum_Referee_Data_Robots_ID Class_Referee::Get_Radar_Send_Robot_ID()
 {
-    return (Interaction_Client_Receive.Robot_ID);
+    return static_cast<Enum_Referee_Data_Robots_ID>(Map_Command.target_robot_id);
 }
 
 /**
@@ -2035,7 +2258,7 @@ Enum_Referee_Data_Robots_ID Class_Referee::Get_Radar_Send_Robot_ID()
  */
 float Class_Referee::Get_Radar_Send_Coordinate_X()
 {
-    return (Interaction_Client_Receive.Coordinate_X);
+    return Map_Command.target_position_x;
 }
 
 /**
@@ -2045,7 +2268,7 @@ float Class_Referee::Get_Radar_Send_Coordinate_X()
  */
 float Class_Referee::Get_Radar_Send_Coordinate_Y()
 {
-    return (Interaction_Client_Receive.Coordinate_Y);
+    return Map_Command.target_position_y;
 }
 
 
@@ -2105,6 +2328,35 @@ void Class_Referee::Set_Booster_Speed(float __booster_speed)
     Robot_Booster.Speed=__booster_speed;
 }
 #endif
+
+
+inline Enum_Referee_Data_Status Class_Referee::Get_Event_Supply_Status(uint8_t Supply_ID)
+{
+    (void)Supply_ID; // 2027 has one own supply activation bit
+    return static_cast<Enum_Referee_Data_Status>(Event_Data.event_data & 1U);
+}
+inline Enum_Referee_Data_Status Class_Referee::Get_Event_Energy_Status()
+{
+    return static_cast<Enum_Referee_Data_Status>(((Event_Data.event_data >> 1) & 0x0FU) != 0U);
+}
+inline Enum_Referee_Data_Status Class_Referee::Get_Event_Energy_Small_Activate_Status()
+{
+    return static_cast<Enum_Referee_Data_Status>(((Event_Data.event_data >> 1) & 3U) == 1U);
+}
+inline Enum_Referee_Data_Status Class_Referee::Get_Event_Energy_Big_Activate_Status()
+{
+    return static_cast<Enum_Referee_Data_Status>(((Event_Data.event_data >> 3) & 3U) == 1U);
+}
+inline Enum_Referee_Data_Status Class_Referee::Get_Event_Highland_Status(uint8_t Highland_ID)
+{
+    if (Highland_ID > 1U) return Referee_Data_Status_DISABLE;
+    const uint8_t shift = Highland_ID == 0U ? 18U : 20U; // fixed R/B central highlands
+    return static_cast<Enum_Referee_Data_Status>(((Event_Data.event_data >> shift) & 3U) == 1U);
+}
+inline uint32_t Class_Referee::Get_Event_Base_Shield_Remain_HP()
+{
+    return 0; // no corresponding 2027 field
+}
 
 #endif
 

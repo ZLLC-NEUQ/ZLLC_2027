@@ -1,11 +1,12 @@
 /**
  * @file ita_chariot.h
- * @author yssickjgd (yssickjgd@mail.ustc.edu.cn)
+ * @author HGCSJ
  * @brief 人机交互控制逻辑
- * @version 0.1
- * @date 2025-07-1 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
+ * @note 原始来源：作者 yssickjgd (yssickjgd@mail.ustc.edu.cn)；版本 0.1；日期 2025-07-1 0.1 26赛季定稿。
  *
  */
 
@@ -136,7 +137,7 @@ class Class_FSM_Alive_Control : public Class_FSM
 public:
     Class_Chariot *Chariot;
 
-    void Reload_TIM_Status_PeriodElapsedCallback();
+    void Reload_TIM_Status_PeriodElapsedCallback(uint32_t elapsed_ms = 1U);
 };
 
 class Class_FSM_Alive_Control_VT13 : public Class_FSM
@@ -145,7 +146,7 @@ class Class_FSM_Alive_Control_VT13 : public Class_FSM
     uint8_t Start_Flag = 0;     //记录第一次上电开机，以初始化状态
     Class_Chariot *Chariot;
 
-    void Reload_TIM_Status_PeriodElapsedCallback();
+    void Reload_TIM_Status_PeriodElapsedCallback(uint32_t elapsed_ms = 1U);
 };
 
 /**
@@ -300,7 +301,6 @@ public:
     #endif
 
     void TIM_Calculate_PeriodElapsedCallback();
-    void TIM_Unline_Protect_PeriodElapsedCallback();
     // 由在线检测任务每 50ms 调用，内部保留 150/350/1000ms 子分频。
     void TIM50ms_Alive_PeriodElapsedCallback();
     // 由控制任务调用，统一应用在线状态对应的控制模式保护。

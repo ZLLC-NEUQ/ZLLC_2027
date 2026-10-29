@@ -1,14 +1,19 @@
 /**********************************************************************************************************
  * @文件     Graphics_Send.c
  * @说明     裁判系统图形发送
- * @版本     V2.0
- * @作者     黄志雄
- * @日期     2023.5.1
+ * @version V1.1
+ * @author HGCSJ 
+ * @date 2026-10-30 27赛季定稿
+ * @copyright ZLLC 2027
+ * @note 原始来源：作者 黄志雄；版本 V2.0；日期 2023.5.1。
  **********************************************************************************************************/
 #include "dvc_GraphicsSendTask.h"
+#include "dvc_performance.h"
+#include "freertos_tasks.h"
 #include <stm32h7xx.h>
 #include <string.h>
 #include "usart.h"
+#include "drv_uart.h"
 #include <stdio.h>
 
 #define CAP_GRAPHIC_NUM 9 // 超级电容的电量显示细分个数
@@ -30,7 +35,10 @@ short lastBigFrictSpeed;
 
 /**********************************************************************************************************
  * @文件     Graphics_Send.c
- * @日期     2023.4
+ * @date 2026-10-30 27赛季定稿
+ * @author HGCSJ
+ * @version V1.1
+ * @copyright ZLLC 2027
 
 
 参考：Robomaster 裁判协议附录v1.4
@@ -56,14 +64,27 @@ uint8_t Transmit_Pack[128];				   // 裁判系统发送帧
 uint8_t data_pack[DRAWING_PACK * 7] = {0}; // 数据段部分
 uint8_t DMAsendflag;
 
-#define REFEREE_DMA_TX_QUEUE_DEPTH 40
-#define REFEREE_DMA_MAX_PACKET_LEN SEND_MAX_SIZE
-
 static RefereeDMAPacket_t referee_dma_queue[REFEREE_DMA_TX_QUEUE_DEPTH];
 static uint8_t referee_dma_head = 0;
 static uint8_t referee_dma_tail = 0;
 uint8_t referee_dma_count = 0;
 volatile uint8_t referee_dma_busy = 0;
+
+/* All producers (UI and robot messages) share the actual on-wire command limits. */
+struct Referee_DMA_Rate_Limit
+{
+	uint16_t command;
+	uint16_t interval_ms;
+	uint32_t last_start_ms;
+	uint8_t started;
+};
+
+static Referee_DMA_Rate_Limit referee_dma_rate_limits[] = {
+	{0x0301, 34, 0, 0},
+	{0x0305, 200, 0, 0},
+	{0x0307, 1000, 0, 0},
+	{0x0308, 334, 0, 0}
+};
 
 static inline uint8_t Referee_DMA_QueueFull(void)
 {
@@ -87,34 +108,83 @@ static void Referee_DMA_Dequeue(void)
 
 static void Referee_DMA_StartNext(void)
 {
-	if (referee_dma_busy || Referee_DMA_QueueEmpty())
+	if (referee_dma_busy || Referee_DMA_QueueEmpty() ||
+		huart10.hdmatx == NULL || huart10.gState != HAL_UART_STATE_READY ||
+		huart10.hdmatx->State != HAL_DMA_STATE_READY || UART_RecoveryPending(&huart10))
 	{
 		return;
 	}
 
 	uint16_t len = referee_dma_queue[referee_dma_head].len;
-	if (HAL_UART_Transmit_DMA(&huart10, referee_dma_queue[referee_dma_head].data, len) == HAL_OK)
+	const uint8_t *frame = referee_dma_queue[referee_dma_head].data;
+	const uint16_t command = (uint16_t)frame[5] | ((uint16_t)frame[6] << 8);
+	const uint32_t now_ms = HAL_GetTick();
+	Referee_DMA_Rate_Limit *limit = NULL;
+	for (uint32_t i = 0; i < sizeof(referee_dma_rate_limits) / sizeof(referee_dma_rate_limits[0]); ++i)
+	{
+		if (referee_dma_rate_limits[i].command == command)
+		{
+			limit = &referee_dma_rate_limits[i];
+			if (limit->started != 0 && (uint32_t)(now_ms - limit->last_start_ms) < limit->interval_ms)
+			{
+				return;
+			}
+			break;
+		}
+	}
+	if (UART_Send_Data(&huart10, referee_dma_queue[referee_dma_head].data, len) == HAL_OK)
 	{
 		referee_dma_busy = 1;
+		if (limit != NULL)
+		{
+			limit->last_start_ms = now_ms;
+			limit->started = 1;
+		}
 	}
 }
 
-void Referee_DMA_EnqueuePacket(const uint8_t *data, uint16_t len)
+void Referee_DMA_Service(void)
 {
-	if (len == 0 || len > REFEREE_DMA_MAX_PACKET_LEN)
+	taskENTER_CRITICAL();
+	/* The in-flight slot stays owned by DMA until both HAL states are ready.
+	 * UART recovery discards a failed transfer before restoring these states.
+	 */
+	if (referee_dma_busy != 0 && !UART_RecoveryPending(&huart10) &&
+		huart10.hdmatx != NULL && huart10.gState == HAL_UART_STATE_READY &&
+		huart10.hdmatx->State == HAL_DMA_STATE_READY)
 	{
-		return;
+		Referee_DMA_Dequeue();
+		referee_dma_busy = 0;
 	}
+	Referee_DMA_StartNext();
+	taskEXIT_CRITICAL();
+}
 
-	// if (Referee_DMA_QueueFull()) {
-	//     return;
-	// }
-
+uint8_t Referee_DMA_TryEnqueuePacket(const uint8_t *data, uint16_t len)
+{
+	/* A referee frame contains a five-byte header, command and CRC16. */
+	if (data == NULL || len < 9 || len > REFEREE_DMA_MAX_PACKET_LEN)
+	{
+		return 0;
+	}
+	taskENTER_CRITICAL();
+	if (Referee_DMA_QueueFull())
+	{
+		taskEXIT_CRITICAL();
+		return 0;
+	}
 	memcpy(referee_dma_queue[referee_dma_tail].data, data, len);
 	referee_dma_queue[referee_dma_tail].len = len;
 	referee_dma_tail = (referee_dma_tail + 1) % REFEREE_DMA_TX_QUEUE_DEPTH;
 	referee_dma_count++;
 	Referee_DMA_StartNext();
+	taskEXIT_CRITICAL();
+	return 1;
+}
+
+void Referee_DMA_EnqueuePacket(const uint8_t *data, uint16_t len)
+{
+	(void)Referee_DMA_TryEnqueuePacket(data, len);
 }
 /**********************************************************************************************************
  *函 数 名: Send_UIPack
@@ -173,8 +243,7 @@ void Send_toReferee(uint16_t cmd_id, uint16_t data_len)
 		Referee_DMA_EnqueuePacket(Transmit_Pack, Frame_Length);
 	}
 }
-uint32_t lastcnt;
-float dtw;
+#if PERFORMANCE_TEST_ENABLE
 #ifdef __cplusplus
 extern "C"
 {
@@ -184,7 +253,7 @@ extern "C"
 	{
 		if (huart == &huart10)
 		{
-			dtw = 1.0f / DWT_GetDeltaT(&lastcnt);
+            PERF_EVENT(Referee_Tx_Frequency);
 			// referee_dma_busy = 0;
 			// Referee_DMA_Dequeue();
 			// Referee_DMA_StartNext();
@@ -194,6 +263,7 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+#endif /* PERFORMANCE_TEST_ENABLE */
 
 /**********************************************************************************************************
  *函 数 名: Deleta_Layer
@@ -1017,22 +1087,11 @@ void GraphicSendtask(void)
 	// 获取当前时间
 	current_time = DWT_GetTimeline_ms();
 
-	if (huart10.hdmatx->State == HAL_DMA_STATE_READY)
-	{
-		referee_dma_busy = 0;
-		Referee_DMA_Dequeue();
-		Referee_DMA_StartNext();
-	}
+	Referee_DMA_Service();
 	// 初始化阶段发送所有UI元素
 	if (Init_Cnt > 0)
 	{
 		Init_Cnt--;
-		if (Init_Cnt == 254)
-		{
-			referee_dma_busy = 0;
-			referee_dma_count = 0;
-		}
-
 		if (Init_Cnt % 2 == 0)
 		{
 			Pitch_Line_Init_1(); // Pitch线

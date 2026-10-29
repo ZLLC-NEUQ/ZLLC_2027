@@ -1,10 +1,10 @@
 /**
  * @file tsk_config_and_callback.cpp
- * @author cjw by yssickjgd
- * @brief 临时任务调度测试用函数, 后续用来存放个人定义的回调函数以及若干任务
- * @version 0.1
- * @date 2025-07-1 0.1 26赛季定稿
- * @copyright ZLLC 2026
+ * @author HGCSJ
+ * @brief 任务调度测试用函数, 用来存放个人定义的回调函数以及若干任务
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
+ * @copyright ZLLC 2027
  */
 
 /**
@@ -42,6 +42,7 @@
 #include "dvc_dmmotor.h"
 #include "ita_chariot.h"
 #include "dvc_imu.h"
+#include "dvc_performance.h"
 #include "usbd_cdc.h"
 #include "usbd_cdc_if.h"
 #include "config.h"
@@ -59,15 +60,6 @@ bool start_flag=0;
 //机器人控制对象
 Class_Chariot chariot;
 
-/* 用 ISR 采集时间测接收频率，避免控制任务批量解析改变测频结果。 */
-static float Task_RxFrequency(uint32_t *last_cycle)
-{
-    const uint32_t cycle = FreeRTOS_GetRxCycle();
-    const uint32_t elapsed = cycle - *last_cycle;
-    *last_cycle = cycle;
-    return (elapsed != 0U) ? ((float)CPU_FREQ_Hz / (float)elapsed) : 0.0f;
-}
-
 /* Private function declarations ---------------------------------------------*/
 /* Function prototypes -------------------------------------------------------*/
 
@@ -79,8 +71,6 @@ static float Task_RxFrequency(uint32_t *last_cycle)
  uint16_t can[3];
 
 #ifdef CHASSIS
-float Dtcha;
-uint32_t last_cntcha = 0;
 void Chassis_Device_CAN1_Callback(Struct_CAN_Rx_Buffer *CAN_RxMessage)
 {
 	can[0]++;
@@ -135,10 +125,6 @@ void Chassis_Device_CAN1_Callback(Struct_CAN_Rx_Buffer *CAN_RxMessage)
  * @param CAN_RxMessage CAN2收到的消息
  */
 #ifdef CHASSIS
-float DtYAW;
-uint32_t last_cntyaw = 0;
-float Dtgim;
-uint32_t last_cntgim = 0;
 void Chassis_Device_CAN2_Callback(Struct_CAN_Rx_Buffer *CAN_RxMessage)
 {
 	can[1]++;
@@ -151,7 +137,7 @@ void Chassis_Device_CAN2_Callback(Struct_CAN_Rx_Buffer *CAN_RxMessage)
         break;
         case (0x78):
         {
-            Dtgim = 1.0f/DWT_GetDeltaT(&last_cntgim);
+            PERF_EVENT(CAN_Gimbal_Rx_Frequency);
             chariot.CAN_Chassis_Rx_Gimbal_Callback_1();
         }
         break;
@@ -180,7 +166,6 @@ void Chassis_Device_CAN3_Callback(Struct_CAN_Rx_Buffer *CAN_RxMessage)
     {
         case(0xD1):
         {
-//					  Dt = 1.0f/DWT_GetDeltaT(&last_cnt);
             chariot.Chassis.Motor_Steer[0].MA600_Data_Process(CAN_RxMessage);
         }
         break;
@@ -251,20 +236,18 @@ void Gimbal_Device_CAN1_Callback(Struct_CAN_Rx_Buffer *CAN_RxMessage)
  * @brief 在中间，有yaw电机(给gimbal和chassis)和波弹盘电机
  * @param CAN_RxMessage CAN2收到的消息
  */
-float Dts ;
-uint32_t last_cnts = 0;
-float DtYAW;
-uint32_t last_cntyaw = 0;
 void Gimbal_Device_CAN2_Callback(Struct_CAN_Rx_Buffer *CAN_RxMessage)
 {
     switch (CAN_RxMessage->Header.Identifier)
     {
         case(0x141):
         {
+#if PERFORMANCE_TEST_ENABLE
             if(CAN_RxMessage->Data[1] != 0)
             {
-			    DtYAW = Task_RxFrequency(&last_cntyaw);
+                PERF_EVENT(CAN_Yaw_Rx_Frequency);
             }
+#endif
             chariot.Gimbal.Motor_Yaw.CAN_RxCpltCallback(CAN_RxMessage->Data);
         }
         break;
@@ -280,12 +263,7 @@ void Gimbal_Device_CAN2_Callback(Struct_CAN_Rx_Buffer *CAN_RxMessage)
         break;
         case(0xA1):
         {
-			Dts = Task_RxFrequency(&last_cnts);
-            // if(Dts<100.f)
-            // {
-                // chariot.Gimbal.Set_Gimbal_Control_Type(Gimbal_Control_Type_DISABLE);
-            //     buzzer_setTask(&buzzer, BUZZER_DJI_STARTUP_PRIORITY);
-            // }
+            PERF_EVENT(CAN_Pitch_Rx_Frequency);
             chariot.Gimbal.Motor_Pitch.CAN_RxCpltCallback(CAN_RxMessage->Data);
 		}
         break;
@@ -400,11 +378,9 @@ void Ist8310_IIC3_Callback(uint8_t* Tx_Buffer, uint8_t* Rx_Buffer, uint16_t Tx_L
  * @param Length 长度
  */
 #ifdef CHASSIS
-float Dts ;
-uint32_t last_cnts = 0;
 void Referee_UART10_Callback(uint8_t *Buffer, uint16_t Length)
 {   
-    Dts = Task_RxFrequency(&last_cnts);
+    PERF_EVENT_AT(Referee_Rx_Frequency, FreeRTOS_GetRxCycle());
     chariot.Referee.UART_RxCpltCallback(Buffer,Length);
 }
 #endif
@@ -425,21 +401,14 @@ void SuperCAP_UART1_Callback(uint8_t *Buffer, uint16_t Length)
  * @brief TIM4任务回调函数
  *
  */
-float Dtm;
-float Imu_Update_Frequency;
-uint32_t last_cntm = 0;
-uint32_t imu_delta = 0;
 void Task100us_TIM4_Callback()
 {
     Struct_IMU_Snapshot snapshot = {};
     #ifdef CHASSIS
-    uint32_t cnt_time = DWT_GetTimeline_us();
     chariot.Boardc_BMI.TIM_Calculate_PeriodElapsedCallback();
-    imu_delta = DWT_GetTimeline_us() - cnt_time;
 
     chariot.Boardc_BMI.Export_Snapshot(snapshot);
     #elif defined(GIMBAL)
-    Imu_Update_Frequency = 1.0f/DWT_GetDeltaT(&last_cntm);
     chariot.Gimbal.Boardc_BMI.TIM_Calculate_PeriodElapsedCallback();
     chariot.Gimbal.Boardc_BMI.Export_Snapshot(snapshot);
     #endif
@@ -464,19 +433,15 @@ void Task_IMU_ApplyLatestSnapshot(void)
 
 
 /**
- * @brief 1ms 控制回调：状态机 -> 2ms 控制解算 -> CAN 发送
+ * @brief 1ms 控制回调：通信恢复 -> 模式保护 -> 2ms 控制解算 -> CAN 发送
  *
  */
 void Task1ms_TIM5_Callback()    
 {
-    #ifdef GIMBAL
-        UART5_Rx_Service();
-    #endif
-
-    /* 控制耗时与 IMU 周期使用独立计时变量，避免任务之间覆盖。 */
-    static uint32_t control_start_cnt = 0;
-    Dtm = DWT_GetDeltaT(&control_start_cnt);
-    // DWT_GetDeltaT(&control_start_cnt);
+    /* 初始化等待期间也处理通信错误；ISR 只请求恢复，任务负责实际重启。 */
+    UART_Error_Service();
+    Referee_DMA_Service();
+    CAN_Error_Service();
 
     if (!start_flag)
     {
@@ -484,16 +449,11 @@ void Task1ms_TIM5_Callback()
         start_flag = (init_finished > 2000U);
     }
 
-    /* 在线检测和模式保护均由控制任务执行。 */
+    /* 在线检测由独立 Alive 任务更新，控制侧每周期落实模式保护。 */
     chariot.TIM_Alive_Protect_PeriodElapsedCallback();
 
     if (start_flag)
     {
-    #ifdef GIMBAL
-        chariot.FSM_Alive_Control.Reload_TIM_Status_PeriodElapsedCallback();
-        chariot.FSM_Alive_Control_VT13.Reload_TIM_Status_PeriodElapsedCallback();
-    #endif
-
         static uint8_t mod2 = 0;
         mod2++;
         if (mod2 == 2U)
@@ -512,10 +472,28 @@ uint8_t Task_Control_IsReady(void)
     return start_flag ? 1U : 0U;
 }
 
-/** @brief 每 50ms 执行一次在线检测，不再在入口内累加 50 次调用 */
-void Task50ms_Alive_Callback(void)
+/** @brief 1ms 存活状态机及 50ms 模块在线检测；不在这里执行串口恢复或等待。 */
+void Task1ms_Alive_Callback(uint32_t elapsed_ms, uint8_t run_module_scan)
 {
-    chariot.TIM50ms_Alive_PeriodElapsedCallback();
+    /* Alive 优先级低于 Control，进入时控制循环已完成/阻塞。
+     * 扫描会清遥控输入、PID 积分和改变模式；短临界区同时排斥控制任务及接收 ISR。
+     * 此调用链只能包含即时返回的操作，不允许 HAL_Delay 或等待 DMA/队列。
+     */
+    taskENTER_CRITICAL();
+    if (run_module_scan)
+    {
+        chariot.TIM50ms_Alive_PeriodElapsedCallback();
+    }
+    #ifdef GIMBAL
+    if (start_flag)
+    {
+        chariot.FSM_Alive_Control.Reload_TIM_Status_PeriodElapsedCallback(elapsed_ms);
+        chariot.FSM_Alive_Control_VT13.Reload_TIM_Status_PeriodElapsedCallback(elapsed_ms);
+    }
+    #else
+    (void)elapsed_ms;
+    #endif
+    taskEXIT_CRITICAL();
 }
 
 /** @brief 控制任务每 10ms 打包两帧，CAN 缓冲区只有控制任务写入。 */
@@ -663,9 +641,7 @@ extern "C" void Task_Init()
 
     GraphicSendtask();
 
-    static float freq;
-    static uint32_t time_s;
-    freq = 1 / DWT_GetDeltaT(&time_s);
+    PERF_EVENT(Chassis_UI_Frequency);
 #endif
 }
 

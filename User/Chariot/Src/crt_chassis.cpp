@@ -1,11 +1,11 @@
 /**
  * @file crt_chassis.cpp
- * @author cjw
+ * @author HGCSJ
  * @brief 底盘
- * @version 0.1
- * @date 2025-07-1 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  *
  */
 
@@ -18,6 +18,7 @@
 /* Includes ------------------------------------------------------------------*/
 
 #include "crt_chassis.h"
+#include "dvc_performance.h"
 #include "buzzer.h"
 #include "drv_math.h"
 #include "config.h"
@@ -734,8 +735,6 @@ void Class_Steering_Wheel_Chassis::Force_Speed_Resolution()
  * @brief TIM定时器中断计算回调函数
  *
  */
-uint32_t _cntm = 0;
-float aaa = 0;
 float Max_Power_test = 60.0f;
 float Chassis_Buffer = 0.0;
 float a,b,c;
@@ -754,9 +753,9 @@ void Class_Steering_Wheel_Chassis::TIM_Calculate_PeriodElapsedCallback(Enum_Spri
     //速度逆解算
     //Speed_Resolution();
 
-    DWT_GetDeltaT(&_cntm);
+    PERF_START(Chassis_Speed_Estimate_Timing);
     Chassis_Speed_Estimate();
-    aaa = DWT_GetDeltaT(&_cntm);
+    PERF_STOP(Chassis_Speed_Estimate_Timing);
     Stree_Angle_Resolution();
     Force_Speed_Resolution();
 

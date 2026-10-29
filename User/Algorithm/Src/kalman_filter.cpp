@@ -1,10 +1,12 @@
 /**
  ******************************************************************************
  * @file    kalman filter.c
- * @author  Wang Hongxi
- * @version V1.2.2
- * @date    2022/1/8
+ * @author HGCSJ
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  * @brief   C implementation of kalman filter
+ * @copyright ZLLC 2027
+ * @note 原始来源：作者 Wang Hongxi；版本 V1.2.2；日期 2022/1/8。
  ******************************************************************************
  * @attention
  * 该卡尔曼滤波器可以在传感器采样频率不同的情况下，动态调整矩阵H R和K的维数与数值。

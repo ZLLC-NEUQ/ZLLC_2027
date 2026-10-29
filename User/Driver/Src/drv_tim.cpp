@@ -1,11 +1,11 @@
 /**
  * @file drv_tim.cpp
- * @author cjw by yssickjgd
+ * @author HGCSJ
  * @brief TIM定时器初始化与中断处理（FreeRTOS 版本）
- * @version 1.0
- * @date 2026-07-28
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  *
  * @note
  *  本文件在裸机版本基础上改造：

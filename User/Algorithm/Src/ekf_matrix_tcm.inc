@@ -1,6 +1,10 @@
 /**
  * @file ekf_matrix_tcm.inc
  * @brief EKF 专用的 ITCM 矩阵乘法、求逆实现。
+ * @author HGCSJ
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
+ * @copyright ZLLC 2027
  *
  * 直接编译仓库现有 CMSIS-DSP 源码，不维护第二份矩阵数学公式。
  * Keil RTE 可能已直接编译 MatrixFunctions.c，故这里使用独立符号，

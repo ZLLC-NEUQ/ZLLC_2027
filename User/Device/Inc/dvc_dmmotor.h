@@ -1,11 +1,11 @@
 /**
  * @file dvc_dmmotor.h
- * @author cjw by yssickjgd
+ * @author HGCSJ by yssickjgd
  * @brief 达妙电机配置与操作
- * @version 0.1
- * @date 2025-07-1 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  *
  */
 

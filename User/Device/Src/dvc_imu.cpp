@@ -1,54 +1,21 @@
 /**
  * @file dvc_imu.cpp
- * @author cjw by wanghongxi
+ * @author HGCSJ
  * @brief imu
- * @version 0.1
- * @date 2025-07-1 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  *
  */
 
 #include "dvc_imu.h"
 #include "ekf_tcm.h"
-
-volatile Struct_EKF_Timing EKF_Timing = {EKF_USE_TCM, 0U, 0U, 0.0f, 0.0f, 0.0f, 0.0f, 0U};
-static uint64_t ekf_total_cycles = 0U;
-
-static void EKF_ResetTiming(void)
-{
-    EKF_Timing.use_tcm = EKF_USE_TCM;
-    EKF_Timing.sample_count = 0U;
-    EKF_Timing.last_cycles = 0U;
-    EKF_Timing.last_us = 0.0f;
-    EKF_Timing.avg_us = 0.0f;
-    EKF_Timing.min_us = 0.0f;
-    EKF_Timing.max_us = 0.0f;
-    ekf_total_cycles = 0U;
-    EKF_Timing.reset_requested = 0U;
-}
-
-static void EKF_RecordTiming(uint32_t cycles)
-{
-    /* 使用实际 CPU 时钟；统计和单位换算均在被测区间之外。 */
-    const float cycles_to_us = 1000000.0f / (float)SystemCoreClock;
-    const float elapsed_us = (float)cycles * cycles_to_us;
-    const uint32_t count = EKF_Timing.sample_count + 1U;
-    ekf_total_cycles += cycles;
-    EKF_Timing.last_cycles = cycles;
-    EKF_Timing.last_us = elapsed_us;
-    EKF_Timing.avg_us = ((float)ekf_total_cycles / (float)count) * cycles_to_us;
-    if ((count == 1U) || (elapsed_us < EKF_Timing.min_us))
-        EKF_Timing.min_us = elapsed_us;
-    if ((count == 1U) || (elapsed_us > EKF_Timing.max_us))
-        EKF_Timing.max_us = elapsed_us;
-    EKF_Timing.sample_count = count;
-}
+#include "dvc_performance.h"
 
 float offsety = 0.0022f;
 void Class_IMU::Init()
 {
-    EKF_ResetTiming();
     // 调度器启动前初始化；运行后计算态和消费态由不同任务分别持有。
     Published_INS = {};
     Published_Sequence = 0;
@@ -90,7 +57,6 @@ EKF_ITCM_CODE void Class_IMU::TIM_Calculate_PeriodElapsedCallback(void)
     Tempture_Cnt_mod50++;
 
     INS_DWT_Dt = DWT_GetDeltaT(&INS_DWT_Count);
-    INS_DWT_Dt_Sum += INS_DWT_Dt;
 
     IMU_BMI088.BMI088_Read(&BMI088_Raw_Data);
 
@@ -101,17 +67,10 @@ EKF_ITCM_CODE void Class_IMU::TIM_Calculate_PeriodElapsedCallback(void)
     INS.Gyro[1] = BMI088_Raw_Data.Gyro[1];
     INS.Gyro[2] = BMI088_Raw_Data.Gyro[2];
 
-    // 两种编译模式使用相同的 DWT 计时边界，保留正常中断。
-    if ((EKF_Timing.reset_requested != 0U) || (EKF_Timing.sample_count == UINT32_MAX))
-        EKF_ResetTiming();
-    __DSB();
-    __ISB();
-    const uint32_t ekf_start_cycles = DWT->CYCCNT;
+    PERF_START(EKF_Timing);
     // 核心函数,EKF更新四元数
     IMU_QuaternionEKF_Update(INS.Gyro[0], INS.Gyro[1], INS.Gyro[2], INS.Accel[0], INS.Accel[1], INS.Accel[2], INS_DWT_Dt, &QEKF_INS);
-    __DSB();
-    const uint32_t ekf_elapsed_cycles = DWT->CYCCNT - ekf_start_cycles;
-    EKF_RecordTiming(ekf_elapsed_cycles);
+    PERF_STOP(EKF_Timing);
 
     memcpy(INS.q, QEKF_INS.q, sizeof(QEKF_INS.q));
 

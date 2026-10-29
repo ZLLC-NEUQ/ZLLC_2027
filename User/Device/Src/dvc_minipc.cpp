@@ -1,17 +1,18 @@
 /**
  * @file dvc_minipc.cpp
- * @author cjw by yssickjgd
+ * @author HGCSJ by yssickjgd
  * @brief 迷你主机
- * @version 0.1
- * @date 2025-07-1 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  *
  */
 
 /* includes ------------------------------------------------------------------*/
 
 #include "dvc_minipc.h"
+#include "dvc_performance.h"
 
 
 /* private macros ------------------------------------------------------------*/
@@ -71,8 +72,6 @@ void Class_MiniPC::Data_Process()
  * @brief 迷你主机发送数据输出
  *
  */
-float Dttttt;
-uint32_t last_cnttt = 0;
 void Class_MiniPC::Output()
 {
   // 设置发送数据
@@ -91,7 +90,7 @@ void Class_MiniPC::Output()
   Pack_Tx_CAN.q[1] = (int16_t)((arm_cos_f32(Roll_rad / 2.0f) * arm_sin_f32(Pitch_rad / 2.0f) * arm_cos_f32(Yaw_rad / 2.0f) + arm_sin_f32(Roll_rad / 2.0f) * arm_cos_f32(Pitch_rad / 2.0f) * arm_sin_f32(Yaw_rad / 2.0f)) * 10000.f);
   Pack_Tx_CAN.q[2] = (int16_t)((arm_cos_f32(Roll_rad / 2.0f) * arm_cos_f32(Pitch_rad / 2.0f) * arm_sin_f32(Yaw_rad / 2.0f) - arm_sin_f32(Roll_rad / 2.0f) * arm_sin_f32(Pitch_rad / 2.0f) * arm_cos_f32(Yaw_rad / 2.0f)) * 10000.f);
     memcpy(CAN_Tx_Data, &Pack_Tx_CAN, sizeof(Pack_tx_t));
-    Dttttt = DWT_GetDeltaT(&last_cnttt);
+    PERF_EVENT(MiniPC_Tx_Frequency);
 
 }
 

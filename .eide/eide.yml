@@ -34,6 +34,7 @@ virtualFolder:
         - path: User/Device/Src/dvc_dmmotor.cpp
         - path: User/Device/Src/dvc_dr16.cpp
         - path: User/Device/Src/dvc_dwt.cpp
+        - path: User/Device/Src/dvc_performance.cpp
         - path: User/Device/Src/dvc_imu.cpp
         - path: User/Device/Src/dvc_lkmotor.cpp
         - path: User/Device/Src/dvc_minipc.cpp
@@ -46,7 +47,6 @@ virtualFolder:
         - path: User/Device/Src/dvc_dmimu.cpp
         - path: User/Device/Src/buzzer.c
         - path: User/Device/Src/buzzer_bsp.c
-        - path: User/Device/Src/dvc_dt.c
       folders: []
     - name: Driver
       files:

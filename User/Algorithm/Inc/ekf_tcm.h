@@ -1,6 +1,10 @@
 /**
  * @file ekf_tcm.h
- * @brief EKF 的可选 TCM 段属性及调试计时接口。
+ * @brief EKF 的可选 TCM 段属性。测试统计见 Device/dvc_performance.h。
+ * @author HGCSJ
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
+ * @copyright ZLLC 2027
  */
 #ifndef EKF_TCM_H
 #define EKF_TCM_H
@@ -25,34 +29,6 @@
 #else
 #define EKF_DTCM_DATA
 #endif
-#endif
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/**
- * 在调试器 Watch 中添加 EKF_Timing。
- * 计时范围仅为 IMU_QuaternionEKF_Update，不包括 SPI 采样和统计开销。
- * 保留正常中断，耗时包含该区间的中断抢占；CYCCNT 无符号相减支持回绕。
- * 修改宏、重新下载后统计重新开始；不会保留另一份固件的历史结果。
- */
-typedef struct
-{
-    uint32_t use_tcm;          /**< 0 原模式，1 TCM 模式。 */
-    uint32_t sample_count;
-    uint32_t last_cycles;
-    float last_us;
-    float avg_us;
-    float min_us;
-    float max_us;
-    uint32_t reset_requested;  /**< 在 Watch 写 1，下次更新前清零统计。 */
-} Struct_EKF_Timing;
-
-extern volatile Struct_EKF_Timing EKF_Timing;
-
-#ifdef __cplusplus
-}
 #endif
 
 #endif /* EKF_TCM_H */

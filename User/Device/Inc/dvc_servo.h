@@ -1,11 +1,11 @@
 // /**
 //  * @file dvc_servo.h
-//  * @author lez by yssickjgd
+//  * @author HGCSJ by yssickjgd
 //  * @brief PWM舵机配置与操作
-//  * @version 0.1
-//  * @date 2024-07-1 0.1 24赛季定稿
+//  * @version V1.1
+//  * @date 2026-10-30 27赛季定稿
 //  *
-//  * @copyright ZLLC 2024
+//  * @copyright ZLLC 2027
 //  *
 //  */
 

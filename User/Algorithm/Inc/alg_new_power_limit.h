@@ -2,10 +2,10 @@
  * @file alg_power_limit.h
  * @author qyx
  * @brief 自适应功率限制算法
- * @version 1.2
- * @date
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2025
+ * @copyright ZLLC 2027
  *
  */
 

@@ -1,10 +1,10 @@
 /**
  * @file drv_adc.h
- * @author cjw by yssickjgd
+ * @author HGCSJ by yssickjgd
  * @brief ADC初始化与配置流程
- * @version 0.1
- * @date 2024-07-1 0.1 24赛季定稿
- * @copyright ZLLC 2024
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
+ * @copyright ZLLC 2027
  */
 
 #ifndef DRV_ADC_H

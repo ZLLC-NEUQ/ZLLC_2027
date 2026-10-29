@@ -1,11 +1,11 @@
 /**
  * @file drv_spi.cpp
- * @author cjw by yssickjgd
+ * @author HGCSJ by yssickjgd
  * @brief SPI通信初始化与配置流程
- * @version 1.1
- * @date 2025-07-1 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  *
  */
 

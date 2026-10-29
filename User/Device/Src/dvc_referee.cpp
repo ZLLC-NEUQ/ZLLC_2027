@@ -1,548 +1,559 @@
 /**
  * @file dvc_referee.cpp
- * @author lez by yssickjgd
- * @brief PM01裁判系统
- * @version 0.1
- * @date 2024-07-1 0.1 24赛季定稿
- *
- * @copyright ZLLC 2024
- *
+ * @brief RoboMaster 2027 V1.0.0 robot-side serial protocol.
+ * @date 2026-10-30 27赛季定稿
+ * @author HGCSJ
+ * @version V1.1
+ * @copyright ZLLC 2027
  */
-
-/* Includes ------------------------------------------------------------------*/
-
 #include "dvc_referee.h"
+#include "dvc_performance.h"
+#include "freertos_tasks.h"
+#include "dvc_GraphicsSendTask.h"
 
-#include "drv_math.h"
-#include "dvc_GraphicsSendTask.h" // 添加这一行，包含完整的JudgeReceive_t定义
-#include "buzzer.h"
-#include "dvc_dwt.h"
-/* Private macros ------------------------------------------------------------*/
-// 删除前向声明，因为已经包含了完整定义
-// struct JudgeReceive_t;
-extern JudgeReceive_t JudgeReceiveData;
-/* Private types -------------------------------------------------------------*/
+namespace
+{
+// Binding also runs before the scheduler starts; preserve the IRQ mask rather
+// than entering the FreeRTOS critical nesting state during initialization.
+struct Referee_Binding_Guard
+{
+    uint32_t saved_primask;
+    Referee_Binding_Guard() : saved_primask(__get_PRIMASK()) { __disable_irq(); }
+    ~Referee_Binding_Guard() { if (saved_primask == 0U) __enable_irq(); }
+};
 
-/* Private variables ---------------------------------------------------------*/
+struct Referee_Tx_Guard
+{
+    Referee_Tx_Guard() { taskENTER_CRITICAL(); }
+    ~Referee_Tx_Guard() { taskEXIT_CRITICAL(); }
+};
 
-/* Private function declarations ---------------------------------------------*/
+Struct_UART_Manage_Object *Referee_Find_UART(UART_HandleTypeDef *huart)
+{
+    if (huart == nullptr) return nullptr;
+    if (huart->Instance == USART1) return &UART1_Manage_Object;
+    if (huart->Instance == USART2) return &UART2_Manage_Object;
+    if (huart->Instance == USART3) return &UART3_Manage_Object;
+    if (huart->Instance == UART4) return &UART4_Manage_Object;
+    if (huart->Instance == UART5) return &UART5_Manage_Object;
+    if (huart->Instance == USART6) return &UART6_Manage_Object;
+    if (huart->Instance == UART7) return &UART7_Manage_Object;
+    if (huart->Instance == UART8) return &UART8_Manage_Object;
+    if (huart->Instance == UART9) return &UART9_Manage_Object;
+    if (huart->Instance == USART10) return &UART10_Manage_Object;
+    return nullptr;
+}
 
-/* Function prototypes -------------------------------------------------------*/
+uint16_t Referee_Read_U16(const uint8_t *data)
+{
+    return static_cast<uint16_t>(data[0] | (static_cast<uint16_t>(data[1]) << 8));
+}
 
-/**
- * @brief 裁判系统初始化
- *
- * @param __huart 指定的UART
- * @param __Frame_Header 数据包头标
- */
+void Referee_Write_U16(uint8_t *data, uint16_t value)
+{
+    data[0] = static_cast<uint8_t>(value);
+    data[1] = static_cast<uint8_t>(value >> 8);
+}
+
+bool Referee_Is_Robot(uint16_t id)
+{
+    const uint16_t number = id >= 101U && id <= 109U ? id - 100U : id;
+    return (id <= 9U || (id >= 101U && id <= 109U)) &&
+           number >= 1U && number <= 9U && number != 2U;
+}
+
+bool Referee_Same_Team(uint16_t first, uint16_t second)
+{
+    return Referee_Is_Robot(first) && Referee_Is_Robot(second) &&
+           (first >= 101U) == (second >= 101U);
+}
+
+bool Referee_Is_Client(uint16_t id, uint16_t robot_id)
+{
+    if (id < 0x0100U) return false;
+    const uint16_t client_robot = id - 0x0100U;
+    const uint16_t number = client_robot >= 101U ? client_robot - 100U : client_robot;
+    return Referee_Same_Team(robot_id, client_robot) && number <= 6U;
+}
+
+// -1: command absent from this link; -2: variable-length robot interaction.
+int16_t Referee_Payload_Length(Enum_Referee_Link link, uint16_t command)
+{
+    if (link == Referee_Link_Video) return command == 0x0311U ? 60 : -1;
+    if (link == Referee_Link_Wireless)
+    {
+        switch (command)
+        {
+        case 0x0A01: return 24;
+        case 0x0A02: return 12;
+        case 0x0A03: return 10;
+        case 0x0A04: return 12;
+        case 0x0A05: return 47;
+        case 0x0A06: return 6;
+        default: return -1;
+        }
+    }
+    switch (command)
+    {
+    case 0x0001: return 11;
+    case 0x0002: return 1;
+    case 0x0003: return 24;
+    case 0x0101: return 8;
+    case 0x0104: return 3;
+    case 0x0105: return 3;
+    case 0x0201: return 17;
+    case 0x0202: return 14;
+    case 0x0203: return 12;
+    case 0x0204: return 7;
+    case 0x0206: return 7;
+    case 0x0207: return 7;
+    case 0x0208: return 8;
+    case 0x0209: return 6;
+    case 0x020A: return 6;
+    case 0x020B: return 40;
+    case 0x020C: return 2;
+    case 0x020D: return 14;
+    case 0x020E: return 8;
+    case 0x0301: return -2;
+    case 0x0303: return 12;
+    default: return -1;
+    }
+}
+}
+
 void Class_Referee::Init(UART_HandleTypeDef *huart, uint8_t __Frame_Header)
 {
-    if (huart->Instance == USART1)
+    Referee_Binding_Guard guard;
+    Struct_UART_Manage_Object *object = Referee_Find_UART(huart);
+    if (object != nullptr && object == Video_UART_Manage_Object)
     {
-        UART_Manage_Object = &UART1_Manage_Object;
+        if (object->UART_Handler != nullptr &&
+            (object->UART_Handler->gState != HAL_UART_STATE_READY ||
+             UART_RecoveryPending(object->UART_Handler))) return;
+        Video_UART_Manage_Object = nullptr;
     }
-    else if (huart->Instance == USART2)
-    {
-        UART_Manage_Object = &UART2_Manage_Object;
-    }
-    else if (huart->Instance == USART3)
-    {
-        UART_Manage_Object = &UART3_Manage_Object;
-    }
-    else if (huart->Instance == UART4)
-    {
-        UART_Manage_Object = &UART4_Manage_Object;
-    }
-    else if (huart->Instance == UART5)
-    {
-        UART_Manage_Object = &UART5_Manage_Object;
-    }
-    else if (huart->Instance == USART6)
-    {
-        UART_Manage_Object = &UART6_Manage_Object;
-    }
-    else if (huart->Instance == USART10)
-    {
-        UART_Manage_Object = &UART10_Manage_Object;
-    }
-
+    UART_Manage_Object = object;
+    if (UART_Manage_Object != nullptr) UART_Manage_Object->UART_Handler = huart;
     Frame_Header = __Frame_Header;
+    memset(Rx_Streams, 0, sizeof(Rx_Streams));
+    memset(Tx_Last_Tick, 0, sizeof(Tx_Last_Tick));
+    memset(Tx_Has_Sent, 0, sizeof(Tx_Has_Sent));
+    Diagnostics = {};
+    Flag = Pre_Flag = 0;
+    seq = Video_seq = 0;
+    Referee_Status = Referee_Status_DISABLE;
+    Map_Command_Update_Count = Map_Command_Receive_Count = 0;
+    Custom_Command_Receive_Count = Interaction_Receive_Count = 0;
+    Interaction_Data_Length = 0;
+    Game_Status = {};
+    Game_Result = {};
+    Game_Robot_HP = {};
+    Event_Data = {};
+    Event_Referee_Warning = {};
+    Event_Dart_Remaining_Time = {};
+    Robot_Status = {};
+    Robot_Power_Heat = {};
+    Robot_Position = {};
+    Robot_Buff = {};
+    Robot_Damage = {};
+    Robot_Booster = {};
+    Robot_Remaining_Ammo = {};
+    Robot_RFID = {};
+    Robot_Dart_Command = {};
+    Ground_Position = {};
+    Radar_Mark = {};
+    Sentry_Info = {};
+    Radar_Info = {};
+    Map_Command = {};
+    Custom_Command = {};
+    Interaction_Students = {};
+    Wireless_Position = {};
+    Wireless_HP = {};
+    Wireless_Ammo = {};
+    Wireless_State = {};
+    Wireless_Buff = {};
+    Wireless_Key = {};
 }
 
-/**
- * @brief 数据处理过程, 为节约性能不作校验但提供了接口
- * 如遇到大规模丢包或错乱现象, 可重新启用校验过程
- *
- */    
-uint16_t buffer_index = 0;
-uint16_t cmd_id,data_length;
-uint16_t buffer_index_max;
-#ifdef OLD_11
-void Class_Referee::Data_Process()
+void Class_Referee::Init_Video_UART(UART_HandleTypeDef *huart)
 {
-    buffer_index = 0;
-    buffer_index_max = UART_Manage_Object->Rx_Buffer_Length;
-    // 遍历整个接收缓冲区寻找帧头
-    while (buffer_index < buffer_index_max)
-    {
-        // 通过校验和帧头
-        if (UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index)] == 0xA5)
-        {
-            // 数据处理过程
-            cmd_id = (UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 6)]) & 0xff;
-            cmd_id = (cmd_id << 8) | UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 5)];
-            data_length = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 2)] & 0xff;
-            data_length = (data_length << 8) | UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 1)];
-            Math_Constrain(&data_length,(uint16_t)0,(uint16_t)(128));  //限制数据段最大长度
-            Enum_Referee_Command_ID CMD_ID = (Enum_Referee_Command_ID)cmd_id;
+    Referee_Binding_Guard guard;
+    // The video transmitter is a different physical link (921600, 8N1).
+    Struct_UART_Manage_Object *object = Referee_Find_UART(huart);
+    if (object != nullptr && object == UART_Manage_Object) return;
+    if (Video_UART_Manage_Object != nullptr && Video_UART_Manage_Object->UART_Handler != nullptr &&
+        (Video_UART_Manage_Object->UART_Handler->gState != HAL_UART_STATE_READY ||
+         UART_RecoveryPending(Video_UART_Manage_Object->UART_Handler))) return;
+    Video_UART_Manage_Object = object;
+    if (object != nullptr) object->UART_Handler = huart;
+    Rx_Streams[Referee_Link_Video].length = 0;
+    Video_seq = 0;
+    Tx_Has_Sent[4] = false;
+}
 
-            uint8_t *data_temp = new uint8_t[5];
-            uint8_t *sum_data = new uint8_t[data_length + 9];
-            for (int i = 0; i < 5; i++)
+uint8_t Class_Referee::Verify_CRC_8(uint8_t *message, uint32_t length)
+{
+    return Get_CRC8_Check_Sum(message, length, CRC8_INIT);
+}
+
+uint16_t Class_Referee::Verify_CRC_16(uint8_t *message, uint32_t length)
+{
+    return Get_CRC16_Check_Sum(message, length, CRC16_INIT);
+}
+
+void Class_Referee::Data_Process(uint8_t *data, uint16_t length)
+{
+    Process_Stream(Referee_Link_Normal, data, length);
+}
+
+void Class_Referee::UART_RxCpltCallback(uint8_t *data, uint16_t length)
+{
+    Data_Process(data, length);
+}
+
+void Class_Referee::Video_UART_RxCpltCallback(uint8_t *data, uint16_t length)
+{
+    Process_Stream(Referee_Link_Video, data, length);
+}
+
+void Class_Referee::Wireless_RxCpltCallback(uint8_t *data, uint16_t length)
+{
+    // Feed bytes AFTER the radar receiver has demodulated the wireless signal.
+    Process_Stream(Referee_Link_Wireless, data, length);
+}
+
+void Class_Referee::Process_Stream(Enum_Referee_Link link, const uint8_t *data, uint16_t length)
+{
+    if (data == nullptr || link > Referee_Link_Wireless) return;
+    Struct_Referee_Rx_Stream &stream = Rx_Streams[link];
+    const uint16_t maximum_payload = link == Referee_Link_Normal ? 118U :
+                                     (link == Referee_Link_Video ? 60U : 47U);
+    // A DMA/IDLE callback is only a byte chunk, never a packet boundary.
+    for (uint16_t input = 0; input < length; ++input)
+    {
+        if (stream.length == sizeof(stream.data))
+        {
+            memmove(stream.data, stream.data + 1, --stream.length);
+            ++Diagnostics.length_errors;
+        }
+        stream.data[stream.length++] = data[input];
+        while (stream.length != 0U)
+        {
+            uint16_t consume = 1U;
+            if (stream.data[0] == Frame_Header)
             {
-                data_temp[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + i)];
-            }
-            if (Verify_CRC8_Check_Sum(data_temp, 5) == 1) //校验帧头
-            {
-                for (int i = 0; i < data_length + 9; i++)
+                if (stream.length < 5U) break;
+                if (!Verify_CRC8_Check_Sum(stream.data, 5U))
                 {
-                    sum_data[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + i)];
+                    ++Diagnostics.crc8_errors;
                 }
-                if (Verify_CRC16_Check_Sum(sum_data, data_length + 9) == 1) //校验整个帧
+                else
                 {
-                    switch (CMD_ID)
+                    const uint16_t payload_length = Referee_Read_U16(stream.data + 1);
+                    if (payload_length > maximum_payload)
                     {
-                    case Referee_Command_ID_GAME_STATUS:
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
-                        {
-                            reinterpret_cast<uint8_t *>(&Game_Status)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                        }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Game_Status) + 7;
-                        // FPS = FPS_Counter_Update();
+                        ++Diagnostics.length_errors;
                     }
-                    break;
-                    case (Referee_Command_ID_GAME_RESULT):
+                    else
                     {
-                        for (int i = 0; i < data_length + 2; i++)
+                        if (stream.length < 7U) break;
+                        const uint16_t command = Referee_Read_U16(stream.data + 5);
+                        const int16_t expected = Referee_Payload_Length(link, command);
+                        if (expected == -1)
                         {
-                            reinterpret_cast<uint8_t *>(&Game_Result)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
+                            ++Diagnostics.unknown_commands;
                         }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Game_Result) + 7;
-                    }
-                    break;
-                    case (Referee_Command_ID_GAME_ROBOT_HP):
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
+                        else if ((expected >= 0 && payload_length != expected) ||
+                                 (expected == -2 && (payload_length < 6U || payload_length > 118U)))
                         {
-                            reinterpret_cast<uint8_t *>(&Game_Robot_HP)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
+                            ++Diagnostics.length_errors;
                         }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Game_Robot_HP) + 7;
-                    }
-                    break;
-                    // 不确定为什么解包这里会导致其他数据错乱
-                    // case (Referee_Command_ID_EVENT_DATA):
-                    // {
-                    //     for (int i = 0; i < data_length + 2; i++)
-                    //     {
-                    //         reinterpret_cast<uint8_t *>(&Event_Data)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                    //     }
-                    //     buffer_index += sizeof(Struct_Referee_Rx_Data_Event_Data) + 7;
-                    // }
-                    // break;
-                    case (Referee_Command_ID_EVENT_SUPPLY):
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
+                        else
                         {
-                            reinterpret_cast<uint8_t *>(&Event_Supply)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
+                            const uint16_t frame_length = payload_length + 9U;
+                            if (stream.length < frame_length) break;
+                            if (!Verify_CRC16_Check_Sum(stream.data, frame_length))
+                            {
+                                // Move one byte so a valid frame inside a corrupt candidate survives.
+                                ++Diagnostics.crc16_errors;
+                            }
+                            else
+                            {
+                                if (Dispatch_Frame(link, command, stream.data + 7, payload_length))
+                                {
+                                    ++Diagnostics.valid_frames;
+                                    // Custom control and radar reception do not keep the normal link alive.
+                                    if (link == Referee_Link_Normal) ++Flag;
+                                }
+                                consume = frame_length;
+                            }
                         }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Event_Supply) + 7;
-                    }
-                    break;
-                    case (Referee_Command_ID_EVENT_REFEREE_WARNING):
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
-                        {
-                            reinterpret_cast<uint8_t *>(&Event_Referee_Warning)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                        }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Event_Referee_Warning) + 7;
-                    }
-                    break;
-                    case (Referee_Command_ID_EVENT_DART_REMAINING_TIME):
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
-                        {
-                            reinterpret_cast<uint8_t *>(&Event_Dart_Remaining_Time)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                        }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Event_Dart_Remaining_Time) + 7;
-                    }
-                    break;
-                    case (Referee_Command_ID_ROBOT_STATUS):
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
-                        {
-                            reinterpret_cast<uint8_t *>(&Robot_Status)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                        }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Robot_Status) + 7;
-                        Dt0 = DWT_GetDeltaT(&last_cnt);
-                    }
-                    break;
-                    case (Referee_Command_ID_ROBOT_POWER_HEAT):
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
-                        {
-                            reinterpret_cast<uint8_t *>(&Robot_Power_Heat)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                        }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Robot_Power_Heat) + 7;
-                    }
-                    break;
-                    case (Referee_Command_ID_ROBOT_POSITION):
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
-                        {
-                            reinterpret_cast<uint8_t *>(&Robot_Position)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                        }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Robot_Position) + 7;
-                    }
-                    break;
-                    case (Referee_Command_ID_ROBOT_BUFF):
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
-                        {
-                            reinterpret_cast<uint8_t *>(&Robot_Buff)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                        }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Robot_Buff) + 7;
-                    }
-                    break;
-                    case (Referee_Command_ID_ROBOT_DAMAGE):
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
-                        {
-                            reinterpret_cast<uint8_t *>(&Robot_Damage)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                        }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Robot_Damage) + 7;
-                    }
-                    break;
-                    case (Referee_Command_ID_ROBOT_BOOSTER):
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
-                        {
-                            reinterpret_cast<uint8_t *>(&Robot_Booster)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                        }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Robot_Booster) + 7;
-                    }
-                    break;
-                    case (Referee_Command_ID_ROBOT_REMAINING_AMMO):
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
-                        {
-                            reinterpret_cast<uint8_t *>(&Robot_Remaining_Ammo)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                        }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Robot_Remaining_Ammo) + 7;
-                    }
-                    break;
-                    case (Referee_Command_ID_ROBOT_RFID):
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
-                        {
-                            reinterpret_cast<uint8_t *>(&Robot_RFID)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                        }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Robot_RFID) + 7;
-                    }
-                    break;
-                    case (Referee_Command_ID_ROBOT_DART_COMMAND):
-                    {
-                        for (int i = 0; i < data_length + 2; i++)
-                        {
-                            reinterpret_cast<uint8_t *>(&Robot_Dart_Command)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                        }
-                        buffer_index += sizeof(Struct_Referee_Rx_Data_Robot_Dart_Command) + 7;
-                    }
-                    break;
-                    // case(Referee_Command_ID_INTERACTION):
-                    // {
-                    //     for (int i = 0; i < data_length + 2; i++)
-                    //     {
-                    //         reinterpret_cast<uint8_t *>(&Interaction_Students)[i] = UART_Manage_Object->Rx_Buffer[Get_Circle_Index(buffer_index + 7 + i)];
-                    //     }
-                    //     buffer_index += sizeof(Struct_Referee_Data_Interaction_Students) + 7;
-                    //     if (Interaction_Students.Header == 0x0205)
-                    //     {
-                    //         JudgeReceiveData.Radar_Double_Damage_Flag=Interaction_Students.Data[0];
-                    //     }
-                    // }
-                    // break;
                     }
                 }
             }
-            delete[] sum_data;
-            delete[] data_temp;
+            stream.length -= consume;
+            if (stream.length != 0U) memmove(stream.data, stream.data + consume, stream.length);
         }
-        buffer_index++;
     }
 }
-#endif
 
-/**
- * @brief 裁判系统8bit循环冗余检验
- *
- * @param Message 消息
- * @param Length 字节数
- * @return uint8_t 校验码
- */
-uint8_t Class_Referee::Verify_CRC_8(uint8_t *Message, uint32_t Length)
+bool Class_Referee::Dispatch_Frame(Enum_Referee_Link link, uint16_t command,
+                                 const uint8_t *data, uint16_t length)
 {
-    uint8_t index;
-    uint8_t check = 0xff;
-
-    if (Message == nullptr)
+    if (link == Referee_Link_Video)
     {
-        return (check);
+        memcpy(&Custom_Command, data, sizeof(Custom_Command));
+        ++Custom_Command_Receive_Count;
+        ++Diagnostics.custom_command_frames;
+        return true;
     }
-
-    while (Length--)
+    if (link == Referee_Link_Wireless)
     {
-        index = *Message;
-        Message++;
-        check = CRC8_TAB[check ^ index];
+        switch (command)
+        {
+        case 0x0A01: memcpy(&Wireless_Position, data, sizeof(Wireless_Position)); break;
+        case 0x0A02: memcpy(&Wireless_HP, data, sizeof(Wireless_HP)); break;
+        case 0x0A03: memcpy(&Wireless_Ammo, data, sizeof(Wireless_Ammo)); break;
+        case 0x0A04: memcpy(&Wireless_State, data, sizeof(Wireless_State)); break;
+        case 0x0A05: memcpy(&Wireless_Buff, data, sizeof(Wireless_Buff)); break;
+        case 0x0A06: memcpy(&Wireless_Key, data, sizeof(Wireless_Key)); break;
+        default: return false;
+        }
+        return true;
     }
-    return (check);
-}
-/**
- * @brief 裁判系统16bit循环冗余检验
- *
- * @param Message 消息
- * @param Length 字节数
- * @return uint8_t 校验码
- */
-uint16_t Class_Referee::Verify_CRC_16(uint8_t *Message, uint32_t Length)
-{
-    uint8_t index;
-    uint16_t check = 0xffff;
-
-    if (Message == nullptr)
+    switch (command)
     {
-        return (check);
-    }
-
-    while (Length--)
+    case 0x0001:
+        memcpy(&Game_Status, data, sizeof(Game_Status));
+        PERF_EVENT_AT(Referee_Game_Status_Frequency, FreeRTOS_GetRxCycle());
+        break;
+    case 0x0002: memcpy(&Game_Result, data, sizeof(Game_Result)); break;
+    case 0x0003: memcpy(&Game_Robot_HP, data, sizeof(Game_Robot_HP)); break;
+    case 0x0101: memcpy(&Event_Data, data, sizeof(Event_Data)); break;
+    case 0x0104: memcpy(&Event_Referee_Warning, data, sizeof(Event_Referee_Warning)); break;
+    case 0x0105: memcpy(&Event_Dart_Remaining_Time, data, sizeof(Event_Dart_Remaining_Time)); break;
+    case 0x0201:
+        memcpy(&Robot_Status, data, sizeof(Robot_Status));
+        PERF_EVENT_AT(Referee_Robot_Status_Frequency, FreeRTOS_GetRxCycle());
+        break;
+    case 0x0202:
+        memcpy(&Robot_Power_Heat, data, sizeof(Robot_Power_Heat));
+        PERF_EVENT_AT(Referee_Power_Heat_Frequency, FreeRTOS_GetRxCycle());
+        break;
+    case 0x0203: memcpy(&Robot_Position, data, sizeof(Robot_Position)); break;
+    case 0x0204: memcpy(&Robot_Buff, data, sizeof(Robot_Buff)); break;
+    case 0x0206: memcpy(&Robot_Damage, data, sizeof(Robot_Damage)); break;
+    case 0x0207: memcpy(&Robot_Booster, data, sizeof(Robot_Booster)); break;
+    case 0x0208: memcpy(&Robot_Remaining_Ammo, data, sizeof(Robot_Remaining_Ammo)); break;
+    case 0x0209: memcpy(&Robot_RFID, data, sizeof(Robot_RFID)); break;
+    case 0x020A: memcpy(&Robot_Dart_Command, data, sizeof(Robot_Dart_Command)); break;
+    case 0x020B: memcpy(&Ground_Position, data, sizeof(Ground_Position)); break;
+    case 0x020C: memcpy(&Radar_Mark, data, sizeof(Radar_Mark)); break;
+    case 0x020D: memcpy(&Sentry_Info, data, sizeof(Sentry_Info)); break;
+    case 0x020E: memcpy(&Radar_Info, data, sizeof(Radar_Info)); break;
+    case 0x0301:
     {
-        index = *Message;
-        Message++;
-        check = ((uint16_t) (check) >> 8) ^ CRC16_Table[((uint16_t) (check) ^ (uint16_t) (index)) & 0xff];
+        const uint16_t content = Referee_Read_U16(data);
+        const uint16_t sender = Referee_Read_U16(data + 2);
+        const uint16_t receiver = Referee_Read_U16(data + 4);
+        const uint16_t local = Get_ID();
+        if (content < 0x0200U || content > 0x02FFU || !Referee_Same_Team(sender, receiver) ||
+            (Referee_Is_Robot(local) && receiver != local)) return false;
+        memset(&Interaction_Students, 0, sizeof(Interaction_Students));
+        memcpy(&Interaction_Students, data, length);
+        Interaction_Data_Length = length - 6U;
+        ++Interaction_Receive_Count;
+        ++Diagnostics.interaction_frames;
+        break;
     }
-    return (check);
-}
-
-
-uint32_t last_cnt[5] = {0};
-float Dt0[5] = {0};
-    /**
- * @brief 数据处理过程, 为节约性能不作校验但提供了接Dt0口
- * 如遇到大规模丢包或错乱现象, 可重新启用校验过程
- *
- */
-void Class_Referee::Data_Process(uint8_t *Rx_Data, uint16_t Length)
-{
-    if (Rx_Data == NULL)
-    {
-        return;
+    case 0x0303:
+        if (Map_Command_Receive_Count == 0U || memcmp(&Map_Command, data, sizeof(Map_Command)) != 0)
+        {
+            memcpy(&Map_Command, data, sizeof(Map_Command));
+            ++Map_Command_Update_Count;
+        }
+        ++Map_Command_Receive_Count;
+        ++Diagnostics.map_command_frames;
+        break;
+    default: return false;
     }
-
-    for (uint32_t i = 0; i < Length;)
-    {
-        uint8_t *frame = &Rx_Data[i];
-        uint32_t remaining_length = (uint32_t)Length - i;
-
-        // 未通过头校验
-        if (frame[0] != Frame_Header)
-        {
-            i++;
-            continue;
-        }
-        // 完整的帧头为 5 字节，检查后才读取长度和 CRC8。
-        if (remaining_length < 5U)
-        {
-            break;
-        }
-        // 未通过CRC8校验, 顺一位继续判断
-        if (Verify_CRC_8(frame, 4) != frame[4])
-        {
-            i++;
-            continue;
-        }
-        uint16_t data_length;
-        memcpy(&data_length, &frame[1], sizeof(data_length));
-        uint32_t frame_length = 7U + data_length + 2U;
-        // 长度必须先完整，避免 CRC16 读取当前消息之外的数据。
-        if (frame_length > remaining_length)
-        {
-            break;
-        }
-
-        uint16_t received_crc;
-        memcpy(&received_crc, &frame[7U + data_length], sizeof(received_crc));
-        // 未通过CRC16校验, 跨过当前包继续判断
-        if (Verify_CRC_16(frame, 7U + data_length) != received_crc)
-        {
-            i += frame_length;
-            continue;
-        }
-
-        uint16_t command_id;
-        memcpy(&command_id, &frame[5], sizeof(command_id));
-        uint8_t *data = &frame[7];
-        // 接收结构末尾含 CRC16，因此有效数据加两字节才是复制长度。
-        uint32_t available_data = (uint32_t)data_length + 2U;
-        switch (command_id)
-        {
-        case Referee_Command_ID_GAME_STATUS:
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Game_Status)) break;
-            memcpy(&Game_Status, data, sizeof(Struct_Referee_Rx_Data_Game_Status));
-            Dt0[1] = DWT_GetDeltaT(&last_cnt[1]);
-            break;
-        }
-
-        case (Referee_Command_ID_GAME_RESULT):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Game_Result)) break;
-            memcpy(&Game_Result, data, sizeof(Struct_Referee_Rx_Data_Game_Result));
-
-            break;
-        }
-        case (Referee_Command_ID_GAME_ROBOT_HP):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Game_Robot_HP)) break;
-            memcpy(&Game_Robot_HP, data, sizeof(Struct_Referee_Rx_Data_Game_Robot_HP));
-
-            break;
-        }
-        case (Referee_Command_ID_EVENT_DATA):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Event_Data)) break;
-            memcpy(&Event_Data, data, sizeof(Struct_Referee_Rx_Data_Event_Data));
-
-            break;
-        }
-        case (Referee_Command_ID_EVENT_SUPPLY):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Event_Supply)) break;
-            memcpy(&Event_Supply, data, sizeof(Struct_Referee_Rx_Data_Event_Supply));
-
-            break;
-        }
-        case (Referee_Command_ID_EVENT_REFEREE_WARNING):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Event_Referee_Warning)) break;
-            memcpy(&Event_Referee_Warning, data, sizeof(Struct_Referee_Rx_Data_Event_Referee_Warning));
-
-            break;
-        }
-        case (Referee_Command_ID_ROBOT_STATUS):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Robot_Status)) break;
-            memcpy(&Robot_Status, data, sizeof(Struct_Referee_Rx_Data_Robot_Status));
-            Dt0[2] = DWT_GetDeltaT(&last_cnt[2]);
-            break;
-        }
-        case (Referee_Command_ID_ROBOT_POWER_HEAT):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Robot_Power_Heat)) break;
-            memcpy(&Robot_Power_Heat, data, sizeof(Struct_Referee_Rx_Data_Robot_Power_Heat));
-            Dt0[0] = DWT_GetDeltaT(last_cnt);
-
-            break;
-        }
-        case (Referee_Command_ID_ROBOT_POSITION):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Robot_Position)) break;
-            memcpy(&Robot_Position, data, sizeof(Struct_Referee_Rx_Data_Robot_Position));
-
-            break;
-        }
-        case (Referee_Command_ID_ROBOT_BUFF):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Robot_Buff)) break;
-            memcpy(&Robot_Buff, data, sizeof(Struct_Referee_Rx_Data_Robot_Buff));
-
-            break;
-        }
-        case (Referee_Command_ID_ROBOT_DAMAGE):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Robot_Damage)) break;
-            memcpy(&Robot_Damage, data, sizeof(Struct_Referee_Rx_Data_Robot_Damage));
-
-            break;
-        }
-        case (Referee_Command_ID_ROBOT_BOOSTER):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Robot_Booster)) break;
-            memcpy(&Robot_Booster, data, sizeof(Struct_Referee_Rx_Data_Robot_Booster));
-
-            break;
-        }
-        case (Referee_Command_ID_ROBOT_REMAINING_AMMO):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Robot_Remaining_Ammo)) break;
-            memcpy(&Robot_Remaining_Ammo, data, sizeof(Struct_Referee_Rx_Data_Robot_Remaining_Ammo));
-
-            break;
-        }
-        case (Referee_Command_ID_ROBOT_RFID):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Robot_RFID)) break;
-            memcpy(&Robot_RFID, data, sizeof(Struct_Referee_Rx_Data_Robot_RFID));
-
-            break;
-        }
-        case (Referee_Command_ID_ROBOT_DART_COMMAND):
-        {
-            if (available_data < sizeof(Struct_Referee_Rx_Data_Robot_Dart_Command)) break;
-            memcpy(&Robot_Dart_Command, data, sizeof(Struct_Referee_Rx_Data_Robot_Dart_Command));
-
-            break;
-        }
-        }
-
-        // 缓冲区直接推移
-        i += frame_length;
-    }
+    return true;
 }
 
-/**
- * @brief UART通信接收回调函数
- *
- * @param Rx_Data 接收的数据
- */
-void Class_Referee::UART_RxCpltCallback(uint8_t *Rx_Data,uint16_t Length)
-{
-    //滑动窗口, 判断裁判系统是否在线
-    Flag += 1;
-
-    Data_Process(Rx_Data, Length);
-}
-
-/**
- * @brief TIM定时器中断定期检测裁判系统是否存活
- *
- */
 void Class_Referee::TIM1msMod50_Alive_PeriodElapsedCallback()
 {
-    //判断该时间段内是否接收过裁判系统数据
-    if (Flag == Pre_Flag)
+    Referee_Status = Flag == Pre_Flag ? Referee_Status_DISABLE : Referee_Status_ENABLE;
+    Pre_Flag = Flag;
+}
+
+bool Class_Referee::Check_Send_Rate(uint8_t slot, uint32_t interval_ms)
+{
+    return slot < 5U && (!Tx_Has_Sent[slot] ||
+           static_cast<uint32_t>(HAL_GetTick() - Tx_Last_Tick[slot]) >= interval_ms);
+}
+
+bool Class_Referee::Send_Frame(uint16_t command, const uint8_t *data, uint16_t length,
+                             Enum_Referee_Link link)
+{
+    if (length != 0U && data == nullptr) return false;
+    // Task-context API: serialize the rate check, persistent DMA buffer write
+    // and DMA start. Never overwrite a previous transmission's live buffer.
+    Referee_Tx_Guard guard;
+    uint8_t slot;
+    uint32_t interval;
+    switch (command)
     {
-        //裁判系统断开连接
-        Referee_Status = Referee_Status_DISABLE;
-        // Buzzer.Set_NowTask(BUZZER_DEVICE_OFFLINE_PRIORITY);
-//        buzzer_setTask(&buzzer, BUZZER_DEVICE_OFFLINE_PRIORITY);
+    case 0x0301: slot = 0; interval = 34U; break;
+    case 0x0305: slot = 1; interval = 200U; break;
+    case 0x0307: slot = 2; interval = 1000U; break;
+    case 0x0308: slot = 3; interval = 334U; break;
+    case 0x0310: slot = 4; interval = 20U; break;
+    default: return false;
+    }
+    if (!Check_Send_Rate(slot, interval)) return false;
+
+    Struct_UART_Manage_Object *object = link == Referee_Link_Video ?
+                                       Video_UART_Manage_Object : UART_Manage_Object;
+    if (object == nullptr || object->UART_Handler == nullptr) return false;
+    const bool video = link == Referee_Link_Video;
+    if ((video && (command != 0x0310U || length != 300U)) ||
+        (!video && (length > 118U || command == 0x0310U))) return false;
+    if (video && (object->UART_Handler->gState != HAL_UART_STATE_READY ||
+                  UART_RecoveryPending(object->UART_Handler))) return false;
+    // Normal frames fit the existing 128-byte DMA queue. 0310 needs a separate
+    // persistent 309-byte DMA buffer, not the driver's 128-byte UART buffer.
+    uint8_t normal_frame[127];
+    uint8_t *frame = video ? Video_Tx_Buffer : normal_frame;
+    frame[0] = Frame_Header;
+    Referee_Write_U16(frame + 1, length);
+    frame[3] = video ? Video_seq : seq;
+    Append_CRC8_Check_Sum(frame, 5U);
+    Referee_Write_U16(frame + 5, command);
+    if (length != 0U) memcpy(frame + 7, data, length);
+    const uint16_t frame_length = length + 9U;
+    Append_CRC16_Check_Sum(frame, frame_length);
+
+    bool accepted = false;
+    if (video)
+    {
+        accepted = UART_Send_Data(object->UART_Handler, frame, frame_length) == HAL_OK;
+    }
+    else if (object->UART_Handler->Instance == USART10)
+    {
+        // UI and other regular-link packets use the same copied DMA queue.
+        accepted = Referee_DMA_TryEnqueuePacket(frame, frame_length) != 0U;
+    }
+    else if (object->UART_Handler->gState == HAL_UART_STATE_READY &&
+             !UART_RecoveryPending(object->UART_Handler))
+    {
+        memcpy(object->Tx_Buffer, frame, frame_length);
+        object->Tx_Length = frame_length;
+        accepted = UART_Send_Data(object->UART_Handler, object->Tx_Buffer, frame_length) == HAL_OK;
+    }
+    if (!accepted) return false;
+    if (video) ++Video_seq; else ++seq;
+    Tx_Has_Sent[slot] = true;
+    Tx_Last_Tick[slot] = HAL_GetTick();
+    return true;
+}
+
+bool Class_Referee::Send_Interaction(uint16_t receiver, uint16_t content,
+                                   const uint8_t *data, uint16_t length)
+{
+    const uint16_t local = Get_ID();
+    if (!Referee_Is_Robot(local) || length > 112U || (length != 0U && data == nullptr)) return false;
+    if (content >= 0x0200U && content <= 0x02FFU)
+    {
+        if (!Referee_Same_Team(local, receiver) || receiver == local) return false;
+    }
+    else if (content == 0x0120U)
+    {
+        if ((local != 7U && local != 107U) || receiver != 0x8080U || length != 4U) return false;
+    }
+    else if (content == 0x0121U)
+    {
+        if ((local != 9U && local != 109U) || receiver != 0x8080U || length != 13U) return false;
     }
     else
     {
-        //裁判系统保持连接
-        Referee_Status = Referee_Status_ENABLE;
+        // UI has its own unchanged draw/pack API; validate the shared envelope
+        // here too when a caller already has a ready-to-send UI payload.
+        uint16_t expected;
+        switch (content)
+        {
+        case 0x0100: expected = 2; break;
+        case 0x0101: expected = 15; break;
+        case 0x0102: expected = 30; break;
+        case 0x0103: expected = 75; break;
+        case 0x0104: expected = 105; break;
+        case 0x0110: expected = 45; break;
+        default: return false;
+        }
+        if (length != expected || !Referee_Is_Client(receiver, local) ||
+            ((local % 100U) != 9U && receiver != local + 0x0100U)) return false;
     }
-    Pre_Flag = Flag;
+    uint8_t payload[118];
+    Referee_Write_U16(payload, content);
+    Referee_Write_U16(payload + 2, local);
+    Referee_Write_U16(payload + 4, receiver);
+    if (length != 0U) memcpy(payload + 6, data, length);
+    return Send_Frame(0x0301U, payload, length + 6U, Referee_Link_Normal);
+}
+
+bool Class_Referee::Send_Sentry_Command(const Struct_Referee_Tx_Data_Sentry_Command &command)
+{
+    // Bits 25..31 are reserved in V1.0.0. Requests are absolute counters;
+    // increment them in the decision layer after checking 020D feedback.
+    if ((command.sentry_cmd & 0xFE000000UL) != 0U) return false;
+    return Send_Interaction(0x8080U, 0x0120U,
+                            reinterpret_cast<const uint8_t *>(&command), sizeof(command));
+}
+
+bool Class_Referee::Send_Radar_Command(const Struct_Referee_Tx_Data_Radar_Command &command)
+{
+    if (command.password_cmd > 2U) return false;
+    return Send_Interaction(0x8080U, 0x0121U,
+                            reinterpret_cast<const uint8_t *>(&command), sizeof(command));
+}
+
+bool Class_Referee::Send_Map_Position(const Struct_Referee_Tx_Data_Map_Position &positions)
+{
+    if (Get_ID() != 9U && Get_ID() != 109U) return false;
+    Struct_Referee_Tx_Data_Map_Position payload = positions;
+    // Robot slots 2 and 5 are reserved, on both teams.
+    memset(payload.positions[1], 0, sizeof(payload.positions[1]));
+    memset(payload.positions[4], 0, sizeof(payload.positions[4]));
+    memset(payload.positions[7], 0, sizeof(payload.positions[7]));
+    memset(payload.positions[10], 0, sizeof(payload.positions[10]));
+    return Send_Frame(0x0305U, reinterpret_cast<const uint8_t *>(&payload), sizeof(payload), Referee_Link_Normal);
+}
+
+bool Class_Referee::Send_Map_Path(const Struct_Referee_Tx_Data_Map_Path &path)
+{
+    if (!Referee_Is_Robot(Get_ID()) || path.intention < 1U || path.intention > 3U) return false;
+    // Both sentry and robots using semi-automatic control may report paths.
+    Struct_Referee_Tx_Data_Map_Path payload = path;
+    payload.sender_id = Get_ID();
+    return Send_Frame(0x0307U, reinterpret_cast<const uint8_t *>(&payload), sizeof(payload), Referee_Link_Normal);
+}
+
+bool Class_Referee::Send_Map_Robot_Data(uint16_t receiver, const uint8_t *utf16_data, uint16_t byte_length)
+{
+    if (!Referee_Is_Client(receiver, Get_ID()) || byte_length > 30U || (byte_length & 1U) != 0U ||
+        (byte_length != 0U && utf16_data == nullptr)) return false;
+    Struct_Referee_Tx_Data_Map_Robot_Data payload = {};
+    payload.sender_id = Get_ID();
+    payload.receiver_id = receiver;
+    if (byte_length != 0U) memcpy(payload.user_data, utf16_data, byte_length);
+    return Send_Frame(0x0308U, reinterpret_cast<const uint8_t *>(&payload), sizeof(payload), Referee_Link_Normal);
+}
+
+bool Class_Referee::Send_Custom_Data(const uint8_t *data, uint16_t length)
+{
+    if (!Referee_Is_Robot(Get_ID()) || length > 300U || (length != 0U && data == nullptr)) return false;
+    uint8_t payload[300] = {};
+    if (length != 0U) memcpy(payload, data, length);
+    return Send_Frame(0x0310U, payload, sizeof(payload), Referee_Link_Video);
 }
 
 

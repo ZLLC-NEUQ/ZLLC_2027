@@ -2,7 +2,11 @@
  ******************************************************************************
  * @file    matrix.cpp/h
  * @brief   Matrix/vector calculation. 矩阵/向量运算
- * @author  Spoon Guan
+ * @author Spoon Guan
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
+ * @copyright ZLLC 2027
+ * @note 原始来源：作者 Spoon Guan。
  ******************************************************************************
  * Copyright (c) 2023 Team JiaoLong-SJTU
  * All rights reserved.

@@ -1,6 +1,10 @@
 /**
  * @file priority_config.h
  * @brief 机器人中断和任务优先级配置。
+ * @author HGCSJ
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
+ * @copyright ZLLC 2027
  *
  * NVIC 数值越小越优先，GROUP4 的子优先级统一为 0。
  * FreeRTOS 任务数值越大越优先；任务宏在 FreeRTOSConfig.h 定义
@@ -27,6 +31,8 @@
 #define ROBOT_TASK_PRIORITY_IMU          (configMAX_PRIORITIES - 2U)
 #define ROBOT_TASK_PRIORITY_CONTROL      (configMAX_PRIORITIES - 5U)
 #define ROBOT_TASK_PRIORITY_TIMER        (configMAX_PRIORITIES - 6U)
+/* 必须低于控制任务：在线扫描只能在控制任务本轮完成/阻塞后进入共享状态临界区。 */
+#define ROBOT_TASK_PRIORITY_ALIVE        (configMAX_PRIORITIES - 7U)
 #define ROBOT_TASK_PRIORITY_BACKGROUND   (configMAX_PRIORITIES - 8U)
 
 #if (ROBOT_IRQ_PRIORITY_RTOS_API_MIN == 0U) || \

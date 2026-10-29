@@ -1,11 +1,11 @@
 /**
  * @file VT13.cpp
- * @author cjw
+ * @author HGCSJ by cjw
  * @brief HX711  tension meter
- * @version 0.1
- * @date 2025-07-01 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  *
  */
 #include "dvc_VT13.h"

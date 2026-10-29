@@ -2,10 +2,10 @@
  * @file TensionMeter.h
  * @author lez
  * @brief HX711  tension meter
- * @version 0.1
- * @date 2024-12-18 0.1 26赛季定稿
+ * @version V1.1
+ * @date 2026-10-30 27赛季定稿
  *
- * @copyright ZLLC 2026
+ * @copyright ZLLC 2027
  *
  */
 
