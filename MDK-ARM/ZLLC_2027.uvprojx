@@ -461,6 +461,11 @@
               <FilePath>..\User\Device\Src\dvc_dr16.cpp</FilePath>
             </File>
             <File>
+              <FileName>dvc_Fs_i6x.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>..\User\Device\Src\dvc_Fs_i6x.cpp</FilePath>
+            </File>
+            <File>
               <FileName>dvc_dwt.cpp</FileName>
               <FileType>8</FileType>
               <FilePath>..\User\Device\Src\dvc_dwt.cpp</FilePath>
