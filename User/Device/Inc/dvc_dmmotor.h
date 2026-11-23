@@ -36,28 +36,45 @@ enum Enum_DM_Motor_Status
  * @brief 达妙电机的ID枚举类型
  *
  */
-enum Enum_DM_Motor_ID : uint8_t
+enum Enum_DM_Motor_ID : uint16_t
 {
     DM_Motor_ID_UNDEFINED = 0,
-    DM_Motor_ID_0xA1,
-    DM_Motor_ID_0xA2,
-    DM_Motor_ID_0xA3,
-    DM_Motor_ID_0xA4,
-    DM_Motor_ID_0xA5,
-    DM_Motor_ID_0xA6,
-    DM_Motor_ID_0xA7,
-    DM_Motor_ID_0xA8,
+    // 枚举值为上位机实际配置的 CAN_ID。
+    DM_Motor_ID_0xA1 = 0xF1,
+    DM_Motor_ID_0xA2 = 0xF2,
+    DM_Motor_ID_0xA3 = 0xF3,
+    DM_Motor_ID_0xA4 = 0xF4,
+    DM_Motor_ID_0xA5 = 0xF5,
+    DM_Motor_ID_0xA6 = 0xF6,
+    DM_Motor_ID_0xA7 = 0xF7,
+    DM_Motor_ID_0xA8 = 0xF8,
+
+    // 同总线尾号须唯一。速度模式占用 0x201～0x208，禁止与大疆电机共线。
+    DM_Motor_ID_0x01 = 0x01,
+    DM_Motor_ID_0x02 = 0x02,
+    DM_Motor_ID_0x03 = 0x03,
+    DM_Motor_ID_0x04 = 0x04,
+    DM_Motor_ID_0x05 = 0x05,
+    DM_Motor_ID_0x06 = 0x06,
+    DM_Motor_ID_0x07 = 0x07,
+    DM_Motor_ID_0x08 = 0x08,
 };
 
 enum Enum_DM_Motor_ErrorCode : uint8_t
 {
-    ERROR_OverVoltage = 8,
-    ERROR_UnderVoltage,
-    ERROR_OverCurrent,
-    ERROR_MOS_OverTemp,
-    ERROR_Motor_OverTemp,
-    ERROR_LossCAN,
-    ERROR_OverLoad,
+    ERROR_Disabled = 0x0,               // 失能
+    ERROR_Enabled = 0x1,                // 使能
+    ERROR_OutputShaftCalibration = 0x3, // 输出轴校准异常
+    ERROR_SensorOutput = 0x4,           // 传感器输出异常
+    ERROR_MotorSensor = 0x5,
+    ERROR_MotorParameterRead = 0x6,     // 读取电机参数错误
+    ERROR_OverVoltage = 0x8,            // 超压
+    ERROR_UnderVoltage = 0x9,           // 欠压
+    ERROR_OverCurrent = 0xA,            // 过电流
+    ERROR_MOS_OverTemp = 0xB,           // MOS 过温
+    ERROR_Motor_OverTemp = 0xC,         // 电机线圈过温
+    ERROR_LossCAN = 0xD,                // 通讯丢失
+    ERROR_OverLoad = 0xE,               // 过载
 };
 
 
@@ -91,7 +108,7 @@ enum Enum_DM_Motor_Control_Method
  */
 struct Struct_DM_Motor_CAN_Rx_Data
 {
-    Enum_DM_Motor_ID CAN_ID;
+    uint8_t CAN_ID; // 原始 D0：高四位 ERR，低四位 ID
     uint16_t Position_Reverse;
     uint8_t Omega_11_4;
     uint8_t Omega_3_0_Torque_11_8;
@@ -101,31 +118,23 @@ struct Struct_DM_Motor_CAN_Rx_Data
 } __attribute__((packed));
 
 /**
- * @brief 达妙电机经过处理的数据, 扭矩非国际单位制
- *
+ * @brief 达妙电机公共反馈数据
  */
-struct Struct_DM_Motor_Rx_Data
+struct Struct_DM_Motor_Feedback
 {
-    Enum_DM_Motor_ID CAN_ID;
+    uint8_t CAN_ID; // 反馈 D0 的低四位
     Enum_DM_Motor_ErrorCode ErrorCode;
     float Now_Angle;
     float Now_Omega;
     float Now_Torque;
     float Now_MOS_Temperature;
     float Now_Rotor_Temperature;
-    uint16_t Pre_Position;
-    int32_t Total_Position;
-    int32_t Total_Round;
 };
 
 /**
- * @brief J4310无刷电机, 单片机控制输出控制帧
- * DM_Motor_Control_Method_POSITION_OMEGA模式下, 需调参助手辅助设置位置环PI参数, 空载250与0
- * 
- * PMAX值需在调参助手设置为3.141593, 即PI, 此时可在MIT模式下当舵机使用
- *
+ * @brief 达妙电机通用驱动基类（标准输出轴侧协议，可直接实例化或派生特化）
  */
-class Class_DM_Motor_J4310
+class Class_DM_Motor
 {
 public:
 
@@ -134,332 +143,87 @@ public:
     // PID角速度环控制
     Class_PID PID_Omega;
 
-    void Init(FDCAN_HandleTypeDef *hcan, Enum_DM_Motor_ID __CAN_ID, Enum_DM_Motor_Control_Method __Control_Method = DM_Motor_Control_Method_MIT_POSITION, int32_t __Position_Offset = 0, float __Omega_Max = 20.94359f, float __Torque_Max = 10.0f);
+    Class_DM_Motor() = default;
+    Class_DM_Motor(const Class_DM_Motor&) = default;
+    virtual ~Class_DM_Motor() = default;
 
-    inline Enum_DM_Motor_Control_Status Get_DM_Motor_Control_Status();
-    inline Enum_DM_Motor_Status Get_DM_Motor_Status();
-    inline float Get_Now_Angle();
-    inline float Get_Now_Radian();
-    inline float Get_Now_Omega();
-    inline float Get_Now_Torque();
-    inline float Get_Now_MOS_Temperature();
-    inline float Get_Now_Rotor_Temperature();
-    inline Enum_DM_Motor_Control_Method Get_Control_Method();
-    inline float Get_MIT_K_P();
-    inline float Get_MIT_K_D();
-    inline float Get_Target_Angle();
-    inline float Get_Target_Omega();
-    inline float Get_Target_Torque();
-    inline float Get_Out();
-    
-    inline void Set_DM_Control_Status(Enum_DM_Motor_Control_Status __DM_Motor_Control_Status);
-    inline void Set_DM_Motor_Control_Method(Enum_DM_Motor_Control_Method __DM_Motor_Control_Method);
-    inline void Set_MIT_K_P(float __MIT_K_P);
-    inline void Set_MIT_K_D(float __MIT_K_D);
-    inline void Set_Target_Angle(float __Target_Angle);
-    inline void Set_Target_Omega(float __Target_Omega);
-    inline void Set_Target_Torque(float __Target_Torque);
-    inline void Set_Out(float __Out);
-	inline void Limit_Out();
+    void Init(FDCAN_HandleTypeDef *hcan, Enum_DM_Motor_ID __CAN_ID, Enum_DM_Motor_Control_Method __Control_Method, float __Omega_Max, float __Torque_Max, float __Angle_Max);
 
+    Enum_DM_Motor_Status Get_DM_Motor_Status();
+    Enum_DM_Motor_Control_Status Get_DM_Motor_Control_Status();
+    Enum_DM_Motor_ErrorCode Get_ErrorCode();
+    // 获取电机当前角度, rad
+    float Get_Now_Angle();
+    // 获取电机当前角速度，rad/s
+    float Get_Now_Omega();
+    // 获取电机当前扭矩，Nm
+    float Get_Now_Torque();
+    // 获取电机当前MOS管温度，摄氏度
+    float Get_Now_MOS_Temperature();
+    // 获取电机当前绕组温度，摄氏度
+    float Get_Now_Rotor_Temperature();
+    Enum_DM_Motor_Control_Method Get_Control_Method();
+    float Get_MIT_K_P();
+    float Get_MIT_K_D();
+    float Get_Target_Angle();
+    float Get_Target_Omega();
+    float Get_Target_Torque();
+
+    void Set_DM_Control_Status(Enum_DM_Motor_Control_Status __Control_Status);
+    void Set_DM_Motor_Control_Method(Enum_DM_Motor_Control_Method __Control_Method);
+    void Set_MIT_K_P(float __MIT_K_P);
+    void Set_MIT_K_D(float __MIT_K_D);
+    void Set_Target_Angle(float __Target_Angle);
+    void Set_Target_Omega(float __Target_Omega);
+    void Set_Target_Torque(float __Target_Torque);
+
+    // Rx_Data 指向一帧已分发给本对象的 8 字节反馈
     void CAN_RxCpltCallback(uint8_t *Rx_Data);
-    void TIM_Alive_PeriodElapsedCallback();
-    void TIM_Process_PeriodElapsedCallback();
-    void TIM_PID_PeriodElapsedCallback();
+    virtual void TIM_Alive_PeriodElapsedCallback();
+    virtual void TIM_Process_PeriodElapsedCallback();
+    virtual void TIM_PID_PeriodElapsedCallback();
+
+    // 提交最近一次打包的控制帧, 返回CAN发送状态
+    uint8_t Send_Control_Frame();
 
 protected:
     //初始化相关变量
-
-    //绑定的CAN
-    Struct_CAN_Manage_Object *CAN_Manage_Object;
-    //收数据绑定的CAN ID, 控制帧是0xxa1~0xxaf
+    Struct_CAN_Manage_Object *CAN_Manage_Object = nullptr;
     Enum_DM_Motor_ID CAN_ID;
-    //发送缓存区
-    uint8_t *CAN_Tx_Data;
-    //位置反馈偏移
-    uint32_t Position_Offset;
-    //最大速度, 调参助手设置, 推荐20.94359, 也就是最大转速200rpm
+    uint8_t *CAN_Tx_Data = nullptr;
+    // 协议量程, 与调参助手中的 PMAX、VMAX、TMAX 一致
+    float Angle_Max;
     float Omega_Max;
-    //最大扭矩, 调参助手设置, 推荐7, 也就是最大输出7NM
     float Torque_Max;
-    //输出量
-    float Out=0.0f;
-    //常量
-    
-    //一圈位置刻度
-    uint32_t Position_Max = 65536;
 
     //内部变量
-
-    //当前时刻的电机接收flag
-    uint32_t Flag = 0;
-    //前一时刻的电机接收flag
+    // 待发送控制帧的ID和长度, 长度为0表示没有待发送帧
+    uint16_t Control_Tx_ID = 0;
+    uint16_t Control_Tx_Length = 0;
+    volatile uint32_t Flag = 0;
     uint32_t Pre_Flag = 0;
 
     //读变量
-
-    //电机状态
     Enum_DM_Motor_Status DM_Motor_Status = DM_Motor_Status_DISABLE;
-    //电机对外接口信息
-    Struct_DM_Motor_Rx_Data Data;
-
-    //写变量
+    Struct_DM_Motor_Feedback Data = {};
 
     //读写变量
-
-    //电机控制状态
     Enum_DM_Motor_Control_Status DM_Motor_Control_Status = DM_Motor_Control_Status_DISABLE;
-    //电机控制方式
-    Enum_DM_Motor_Control_Method DM_Motor_Control_Method = DM_Motor_Control_Method_MIT_POSITION;
-    //MIT的Kp值, 0~500, 空载6, 位置控制需要
+    Enum_DM_Motor_Control_Method DM_Motor_Control_Method;
     float MIT_K_P = 0.0f;
-    //MIT的Kd值, 0~5, 空载0.2, 位置和速度控制需要
     float MIT_K_D = 0.0f;
-    //目标的角度, rad
     float Target_Angle = 0.0f;
-    //目标的速度, rad/s
     float Target_Omega = 0.0f;
-    //目标的扭矩
     float Target_Torque = 0.0f;
 
     //内部函数
-
-    void Data_Process(uint8_t* Rx_Data);
-    void Output();
+    virtual void Pack_Control_Frame(float angle, float omega, float torque, float kp, float kd);
+    virtual void Data_Process(uint8_t *Rx_Data);
 };
 
 /* Exported variables --------------------------------------------------------*/
 
 /* Exported function declarations --------------------------------------------*/
-
-/**
- * @brief 获取电机状态
- *
- * @return Enum_DM_Motor_Status 电机状态
- */
-Enum_DM_Motor_Status Class_DM_Motor_J4310::Get_DM_Motor_Status()
-{
-    return (DM_Motor_Status);
-}
-
-/**
- * @brief 获取当前的角度, rad
- *
- * @return float 当前的角度, rad
- */
-float Class_DM_Motor_J4310::Get_Now_Angle()
-{
-    return (Data.Now_Angle);
-}
-
-/**
- * @brief 获取当前的速度, rad/s
- *
- * @return float 当前的速度, rad/s
- */
-float Class_DM_Motor_J4310::Get_Now_Omega()
-{
-    return (Data.Now_Omega);
-}
-
-/**
- * @brief 获取当前的扭矩, 直接采用反馈值
- *
- * @return float 当前的扭矩, 直接采用反馈值
- */
-float Class_DM_Motor_J4310::Get_Now_Torque()
-{
-    return (Data.Now_Torque);
-}
-
-/**
- * @brief 获取当前MOS管的温度, 开氏度
- *
- * @return float 当前MOS管的温度, 开氏度
- */
-float Class_DM_Motor_J4310::Get_Now_MOS_Temperature()
-{
-    return (Data.Now_MOS_Temperature);
-}
-
-/**
- * @brief 获取当前绕组的温度, 开氏度
- *
- * @return float 当前绕组的温度, 开氏度
- */
-float Class_DM_Motor_J4310::Get_Now_Rotor_Temperature()
-{
-    return (Data.Now_Rotor_Temperature);
-}
-
-/**
- * @brief 获取电机控制方式
- *
- * @return Enum_DM_Motor_Control_Method 电机控制方式
- */
-Enum_DM_Motor_Control_Method Class_DM_Motor_J4310::Get_Control_Method()
-{
-    return (DM_Motor_Control_Method);
-}
-
-/**
- * @brief 获取MIT的Kp值, 0~500
- *
- * @return float MIT的Kp值, 0~500
- */
-float Class_DM_Motor_J4310::Get_MIT_K_P()
-{
-    return (MIT_K_P);
-}
-
-/**
- * @brief 获取MIT的Kd值, 0~5
- *
- * @return float MIT的Kd值, 0~5
- */
-float Class_DM_Motor_J4310::Get_MIT_K_D()
-{
-    return (MIT_K_D);
-}
-
-/**
- * @brief 获取目标的角度, rad
- *
- * @return float 目标的角度, rad
- */
-float Class_DM_Motor_J4310::Get_Target_Angle()
-{
-    return (Target_Angle);
-}
-
-/**
- * @brief 获取目标的速度, rad/s
- *
- * @return float 目标的速度, rad/s
- */
-float Class_DM_Motor_J4310::Get_Target_Omega()
-{
-    return (Target_Omega);
-}
-
-/**
- * @brief 获取目标的扭矩
- *
- * @return float 目标的扭矩
- */
-float Class_DM_Motor_J4310::Get_Target_Torque()
-{
-    return (Target_Torque);
-}
-
-/**
- * @brief 获取目标的输出
- *
- * @return float 目标的输出   
- */
-float Class_DM_Motor_J4310::Get_Out()
-{
-    return (Out);
-}
-
-/**
- * @brief 设定电机控制状态
- *
- * @param __DM_Motor_Control_Status 电机控制状态
- */
-void Class_DM_Motor_J4310::Set_DM_Control_Status(Enum_DM_Motor_Control_Status __DM_Motor_Control_Status)
-{
-    DM_Motor_Control_Status = __DM_Motor_Control_Status;
-}
-
-/**
- * @brief 设定电机控制方式
- *
- * @param __Control_Method 电机控制方式
- */
-void Class_DM_Motor_J4310::Set_DM_Motor_Control_Method(Enum_DM_Motor_Control_Method __Control_Method)
-{
-    DM_Motor_Control_Method = __Control_Method;
-}
-
-/**
- * @brief 设定MIT的Kp值, 0~500, 空载6, 位置控制需要
- *
- * @param __MIT_K_P MIT的Kp值, 0~500, 空载6, 位置控制需要
- */
-void Class_DM_Motor_J4310::Set_MIT_K_P(float __MIT_K_P)
-{
-    MIT_K_P = __MIT_K_P;
-}
-
-/**
- * @brief 设定MIT的Kd值, 0~5, 空载0.2, 位置和速度控制需要
- *
- * @param __MIT_K_D MIT的Kd值, 0~5, 空载0.2, 位置和速度控制需要
- */
-void Class_DM_Motor_J4310::Set_MIT_K_D(float __MIT_K_D)
-{
-    MIT_K_D = __MIT_K_D;
-}
-
-/**
- * @brief 设定目标的角度, rad
- *
- * @param __Target_Angle 目标的角度, rad
- */
-void Class_DM_Motor_J4310::Set_Target_Angle(float __Target_Angle)
-{
-    Target_Angle = __Target_Angle;
-}
-
-/**
- * @brief 设定目标的速度, rad/s
- *
- * @param __Target_Omega 目标的速度, rad/s
- */
-void Class_DM_Motor_J4310::Set_Target_Omega(float __Target_Omega)
-{
-    Target_Omega = __Target_Omega;
-}
-
-/**
- * @brief 设定目标的扭矩
- *
- * @param __Target_Torque 目标的扭矩
- */
-void Class_DM_Motor_J4310::Set_Target_Torque(float __Target_Torque)
-{
-    Target_Torque = __Target_Torque;
-}
-
-/**
- * @brief 设定目标的输出
- *
- * @param __Out 目标的输出
- */
-
-void Class_DM_Motor_J4310::Set_Out(float __Out)
-{
-    Out=__Out;
-}
-
-/**
- * @brief 限制目标的输出
- *
- * @param __Out 目标的输出
- */
-void Class_DM_Motor_J4310::Limit_Out()
-{
-	if(Out>4095)
-		Out=4095;
-	else if(Out<-4095)
-		Out=-4095;
-	
-	else
-	{
-        		
-	}
-}
 
 #endif
 
