@@ -54,20 +54,27 @@ struct IMU_Data
  * @brief Specialized, pitch轴电机类
  *
  */
-class Class_Gimbal_Pitch_Motor_DM4310 : public Class_DM_Motor_J4310
+class Class_Gimbal_Pitch_Motor_DM4310 : public Class_DM_Motor
 {
 public:
     //陀螺仪获取云台角速度
     Class_IMU* IMU;
 
+    void Init(FDCAN_HandleTypeDef *hcan, Enum_DM_Motor_ID __CAN_ID,
+              Enum_DM_Motor_Control_Method __Control_Method = DM_Motor_Control_Method_MIT_POSITION,
+              float __Omega_Max = 30.0f, float __Torque_Max = 10.0f, float __Angle_Max = PI);
 
     inline float Get_True_Rad_Pitch();
     inline float Get_True_Gyro_Pitch();
     inline float Get_True_Angle_Pitch();
+    float Get_Out();
+    void Set_Out(float __Out);
+    void Limit_Out();
 
     void Transform_Angle();
     void Disable();
-    void TIM_PID_PeriodElapsedCallback();
+    void TIM_Alive_PeriodElapsedCallback() override;
+    void TIM_PID_PeriodElapsedCallback() override;
 
 protected:
     //初始化相关变量
@@ -82,6 +89,8 @@ protected:
     float True_Rad_Pitch = 0.0f;
     float True_Angle_Pitch = 0.0f;
     float True_Gyro_Pitch = 0.0f;
+    //输出量
+    float Out = 0.0f;
     //读变量
 
     //写变量
@@ -89,6 +98,7 @@ protected:
     //读写变量
 
     //内部函数
+    void Output();
 };
 
 float Class_Gimbal_Pitch_Motor_DM4310::Get_True_Rad_Pitch()
