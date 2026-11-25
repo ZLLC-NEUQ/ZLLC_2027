@@ -42,22 +42,49 @@
 #endif
 
 //底盘或云台状态
-#define CHASSIS
-//#define GIMBAL
+//#define CHASSIS
+#define GIMBAL
 
-//底盘标定参考正方向角度(数据来源yaw电机)
+//底盘标定参考正方向角度(数据来源yaw电机), 供 GraphicsSendTask 等既有代码使用
 #define Reference_Angle  -52.29f
 #define Reference_Radian  (Reference_Angle * PI / 180.f)
 
-//调试或比赛状态
-#define DEBUG
-//#define BATTLE
+//遥控器选择
+//#define USE_VT13
+//#define USE_DR16
+#define USE_FS_i6X
 
+/* 兵种/底盘类型选择*/
+//#define AGV      //舵轮底盘
+#define OMNI_WHEEL //全向轮底盘
+
+//#define INFANTRY //步兵
+//#define HERO  //英雄
+#define SENTRY //哨兵
+
+/*轮组数据*/
+#ifdef INFANTRY
+#define Wheel_Diameter 0.12000000f // 轮子直径，单位为m
+#endif
+
+#ifdef HERO
+#define Wheel_Diameter 0.12000000f // 轮子直径，单位为m
+#endif
+
+#ifdef SENTRY
+#define Wheel_Diameter 0.12000000f // 轮子直径，单位为m
+#define Chassis_Radius 0.46000000f // 底盘半径，单位为m
+
+#define H7_Offset_X 0.51465f          // 旋转中心到H7的x方向偏移，单位为m，正值表示H7在旋转中心前方，底盘坐标系
+#define H7_Offset_Y 0.12475f        // 旋转中心到H7的y方向偏移，单位为m，正值表示H7在旋转中心左侧，底盘坐标系
 
 //功率控制相关
-#define POWER_LIMIT_JH
-//#define POWER_LIMIT_GY
 #define POWER_CONTROL 0 //启用功率控制
+//#define POWER_LIMIT_1              //老版本功率限制
+#define POWER_LIMIT_2              //新版本
+
+#endif
+
 //#define BUFFER_LOOP
 
 //#define Heat_Detect_ENABLE
@@ -66,9 +93,6 @@
 #define Forward_Power
 
 #define SuperCap 0
-
-/* 兵种/底盘类型选择*/
-#define AGV      //舵轮底盘
 
 
 
