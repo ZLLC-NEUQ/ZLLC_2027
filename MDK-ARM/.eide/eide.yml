@@ -178,8 +178,6 @@ virtualFolder:
       folders: []
     - name: Validation
       files:
-        - path: ../Tools/check_can_fd.py
-        - path: ../Tools/can_fd_tests.cpp
         - path: ../Tools/check_cubemx.py
         - path: ../Tools/check_priorities.py
         - path: ../README.md

@@ -1045,16 +1045,6 @@
           </GroupOption>
           <Files>
             <File>
-              <FileName>check_can_fd.py</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\Tools\check_can_fd.py</FilePath>
-            </File>
-            <File>
-              <FileName>can_fd_tests.cpp</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\Tools\can_fd_tests.cpp</FilePath>
-            </File>
-            <File>
               <FileName>check_cubemx.py</FileName>
               <FileType>5</FileType>
               <FilePath>..\Tools\check_cubemx.py</FilePath>
