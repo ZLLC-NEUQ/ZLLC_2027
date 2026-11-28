@@ -377,7 +377,7 @@
             <IncludeLibsPath></IncludeLibsPath>
             <Misc></Misc>
             <LinkerInputFile></LinkerInputFile>
-            <DisabledWarnings>6314</DisabledWarnings>
+            <DisabledWarnings>6314,6329</DisabledWarnings>
           </LDads>
         </TargetArmAds>
       </TargetOption>
@@ -399,6 +399,11 @@
               <FileName>freertos_tasks.cpp</FileName>
               <FileType>8</FileType>
               <FilePath>..\User\Task\Src\freertos_tasks.cpp</FilePath>
+            </File>
+            <File>
+              <FileName>freertos_tasks.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\User\Task\Inc\freertos_tasks.h</FilePath>
             </File>
             <File>
               <FileName>tsk_config_and_callback.cpp</FileName>
@@ -556,6 +561,11 @@
               <FilePath>..\User\Driver\Src\drv_can.cpp</FilePath>
             </File>
             <File>
+              <FileName>drv_can.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\User\Driver\Inc\drv_can.h</FilePath>
+            </File>
+            <File>
               <FileName>drv_dwt.cpp</FileName>
               <FileType>8</FileType>
               <FilePath>..\User\Driver\Src\drv_dwt.cpp</FilePath>
@@ -595,6 +605,11 @@
         <Group>
           <GroupName>Algorithm</GroupName>
           <Files>
+            <File>
+              <FileName>alg_VQF.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>..\User\Algorithm\Src\alg_VQF.cpp</FilePath>
+            </File>
             <File>
               <FileName>alg_filter.cpp</FileName>
               <FileType>8</FileType>
@@ -954,6 +969,110 @@
               <FileName>port.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Middlewares\Third_Party\FreeRTOS\Source\portable\GCC\ARM_CM7\r0p1\port.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Validation</GroupName>
+          <GroupOption>
+            <CommonProperty>
+              <UseCPPCompiler>0</UseCPPCompiler>
+              <RVCTCodeConst>0</RVCTCodeConst>
+              <RVCTZI>0</RVCTZI>
+              <RVCTOtherData>0</RVCTOtherData>
+              <ModuleSelection>0</ModuleSelection>
+              <IncludeInBuild>0</IncludeInBuild>
+              <AlwaysBuild>0</AlwaysBuild>
+              <GenerateAssemblyFile>0</GenerateAssemblyFile>
+              <AssembleAssemblyFile>0</AssembleAssemblyFile>
+              <PublicsOnly>0</PublicsOnly>
+              <StopOnExitCode>3</StopOnExitCode>
+              <CustomArgument></CustomArgument>
+              <IncludeLibraryModules></IncludeLibraryModules>
+              <ComprImg>0</ComprImg>
+            </CommonProperty>
+            <GroupArmAds>
+              <Cads>
+                <interw>2</interw>
+                <Optim>0</Optim>
+                <oTime>2</oTime>
+                <SplitLS>2</SplitLS>
+                <OneElfS>2</OneElfS>
+                <Strict>2</Strict>
+                <EnumInt>2</EnumInt>
+                <PlainCh>2</PlainCh>
+                <Ropi>2</Ropi>
+                <Rwpi>2</Rwpi>
+                <wLevel>0</wLevel>
+                <uThumb>2</uThumb>
+                <uSurpInc>2</uSurpInc>
+                <uC99>2</uC99>
+                <uGnu>2</uGnu>
+                <useXO>2</useXO>
+                <v6Lang>0</v6Lang>
+                <v6LangP>0</v6LangP>
+                <vShortEn>2</vShortEn>
+                <vShortWch>2</vShortWch>
+                <v6Lto>2</v6Lto>
+                <v6WtE>2</v6WtE>
+                <v6Rtti>2</v6Rtti>
+                <VariousControls>
+                  <MiscControls></MiscControls>
+                  <Define></Define>
+                  <Undefine></Undefine>
+                  <IncludePath></IncludePath>
+                </VariousControls>
+              </Cads>
+              <Aads>
+                <interw>2</interw>
+                <Ropi>2</Ropi>
+                <Rwpi>2</Rwpi>
+                <thumb>2</thumb>
+                <SplitLS>2</SplitLS>
+                <SwStkChk>2</SwStkChk>
+                <NoWarn>2</NoWarn>
+                <uSurpInc>2</uSurpInc>
+                <useXO>2</useXO>
+                <ClangAsOpt>0</ClangAsOpt>
+                <VariousControls>
+                  <MiscControls></MiscControls>
+                  <Define></Define>
+                  <Undefine></Undefine>
+                  <IncludePath></IncludePath>
+                </VariousControls>
+              </Aads>
+            </GroupArmAds>
+          </GroupOption>
+          <Files>
+            <File>
+              <FileName>check_can_fd.py</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Tools\check_can_fd.py</FilePath>
+            </File>
+            <File>
+              <FileName>can_fd_tests.cpp</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Tools\can_fd_tests.cpp</FilePath>
+            </File>
+            <File>
+              <FileName>check_cubemx.py</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Tools\check_cubemx.py</FilePath>
+            </File>
+            <File>
+              <FileName>check_priorities.py</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Tools\check_priorities.py</FilePath>
+            </File>
+            <File>
+              <FileName>README.md</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\README.md</FilePath>
+            </File>
+            <File>
+              <FileName>ZLLC_2027.ioc</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\ZLLC_2027.ioc</FilePath>
             </File>
           </Files>
         </Group>

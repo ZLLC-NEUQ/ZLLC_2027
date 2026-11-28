@@ -28,6 +28,10 @@ Struct_CAN_Recovery_Diagnostics CAN1_Recovery_Diagnostics = {};
 Struct_CAN_Recovery_Diagnostics CAN2_Recovery_Diagnostics = {};
 Struct_CAN_Recovery_Diagnostics CAN3_Recovery_Diagnostics = {};
 
+Struct_CAN_IO_Diagnostics CAN1_IO_Diagnostics = {};
+Struct_CAN_IO_Diagnostics CAN2_IO_Diagnostics = {};
+Struct_CAN_IO_Diagnostics CAN3_IO_Diagnostics = {};
+
 struct Struct_CAN_Recovery_State
 {
     Struct_CAN_Manage_Object *Object;
@@ -35,13 +39,14 @@ struct Struct_CAN_Recovery_State
     volatile uint8_t Reinit_Required;
     uint8_t Retry_Waiting;
     uint32_t Last_Attempt_ms;
+    Struct_CAN_IO_Diagnostics *IO;
 };
 
 static Struct_CAN_Recovery_State CAN_Recovery_States[] =
 {
-    {&CAN1_Manage_Object, &CAN1_Recovery_Diagnostics, 0U, 0U, 0U},
-    {&CAN2_Manage_Object, &CAN2_Recovery_Diagnostics, 0U, 0U, 0U},
-    {&CAN3_Manage_Object, &CAN3_Recovery_Diagnostics, 0U, 0U, 0U}
+    {&CAN1_Manage_Object, &CAN1_Recovery_Diagnostics, 0U, 0U, 0U, &CAN1_IO_Diagnostics},
+    {&CAN2_Manage_Object, &CAN2_Recovery_Diagnostics, 0U, 0U, 0U, &CAN2_IO_Diagnostics},
+    {&CAN3_Manage_Object, &CAN3_Recovery_Diagnostics, 0U, 0U, 0U, &CAN3_IO_Diagnostics}
 };
 
 static const uint32_t CAN_RECOVERY_RETRY_MS = 100U;
@@ -50,6 +55,25 @@ static const uint32_t CAN_RECOVERY_ERROR_MASK =
 static const uint32_t CAN_RECOVERY_NOTIFICATIONS =
     FDCAN_IT_BUS_OFF | FDCAN_IT_RAM_ACCESS_FAILURE |
     FDCAN_IT_RAM_WATCHDOG | FDCAN_IT_RESERVED_ADDRESS_ACCESS;
+
+static const uint8_t CAN_DLC_TO_BYTES[16] =
+    {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
+
+/* 仅包围无等待的 RAM 复制/寄存器操作；保存原状态，兼容启动期及嵌套临界区。
+ * 不在此临界区调用回调、Stop/Init/Start 或任何可能等待的操作。 */
+static uint32_t CAN_Lock(void)
+{
+    const uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    __DMB();
+    return mask;
+}
+
+static void CAN_Unlock(uint32_t mask)
+{
+    __DMB();
+    __set_PRIMASK(mask);
+}
 
 static Struct_CAN_Recovery_State *CAN_Get_Recovery_State(FDCAN_HandleTypeDef *hcan)
 {
@@ -91,7 +115,8 @@ static HAL_StatusTypeDef CAN_Configure_Reception(FDCAN_HandleTypeDef *hcan)
     }
     return HAL_FDCAN_ActivateNotification(hcan,
         CAN_RECOVERY_NOTIFICATIONS |
-        (fifo1 ? FDCAN_IT_RX_FIFO1_NEW_MESSAGE : FDCAN_IT_RX_FIFO0_NEW_MESSAGE), 0U);
+        (fifo1 ? (FDCAN_IT_RX_FIFO1_NEW_MESSAGE | FDCAN_IT_RX_FIFO1_FULL | FDCAN_IT_RX_FIFO1_MESSAGE_LOST)
+               : (FDCAN_IT_RX_FIFO0_NEW_MESSAGE | FDCAN_IT_RX_FIFO0_FULL | FDCAN_IT_RX_FIFO0_MESSAGE_LOST)), 0U);
 }
 
 static void CAN_Recover_One(Struct_CAN_Recovery_State *recovery)
@@ -123,6 +148,8 @@ static void CAN_Recover_One(Struct_CAN_Recovery_State *recovery)
     const IRQn_Type irqn = CAN_Get_IRQn(hcan);
     const uint32_t irq_enabled = NVIC_GetEnableIRQ(irqn);
     HAL_NVIC_DisableIRQ(irqn);
+    /* 不清空 UART/USB 共用队列；只使本路旧 FD 消息失效。 */
+    recovery->Object->FD_Rx_Generation++;
 
     HAL_StatusTypeDef status = HAL_OK;
     if (hcan->State == HAL_FDCAN_STATE_BUSY)
@@ -373,6 +400,7 @@ void CAN_Init(FDCAN_HandleTypeDef *hcan, CAN_Call_Back Callback_Function)
     if (recovery == NULL) { return; }
     recovery->Object->CAN_Handler = hcan;
     recovery->Object->Callback_Function = Callback_Function;
+    recovery->Object->FD_Rx_Generation++;
 
     HAL_StatusTypeDef status = CAN_Configure_Reception(hcan);
     if (status == HAL_OK) { status = HAL_FDCAN_Start(hcan); }
@@ -384,6 +412,56 @@ void CAN_Init(FDCAN_HandleTypeDef *hcan, CAN_Call_Back Callback_Function)
         recovery->Diagnostics->Recovery_Pending = 1U;
         recovery->Reinit_Required = 1U;
     }
+}
+
+HAL_StatusTypeDef CAN_Register_FD_Callback(FDCAN_HandleTypeDef *hcan, CANFD_Call_Back Callback_Function)
+{
+    Struct_CAN_Recovery_State *recovery = CAN_Get_Recovery_State(hcan);
+    if (recovery == NULL || recovery->Object->CAN_Handler != hcan || __get_IPSR() != 0U)
+    {
+        return HAL_ERROR;
+    }
+    /* 明确限制为启动注册，避免 Control 正在调用旧回调时更换其所有者。 */
+    if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) { return HAL_BUSY; }
+    const uint32_t mask = CAN_Lock();
+    recovery->Object->FD_Callback_Function = Callback_Function;
+    recovery->Object->FD_Rx_Generation++;
+    CAN_Unlock(mask);
+    return HAL_OK;
+}
+
+void CANFD_Dispatch_Rx(uint8_t CAN_Instance, const FDCAN_RxHeaderTypeDef *Header,
+                       const uint8_t *Data, uint32_t Generation)
+{
+    if (CAN_Instance < 1U || CAN_Instance > 3U) { return; }
+    Struct_CAN_Recovery_State *recovery = &CAN_Recovery_States[CAN_Instance - 1U];
+    if (__get_IPSR() != 0U || Header == NULL || Data == NULL || Header->FDFormat != FDCAN_FD_CAN ||
+        Header->RxFrameType != FDCAN_DATA_FRAME || Header->DataLength > FDCAN_DLC_BYTES_64)
+    {
+        const uint32_t mask = CAN_Lock();
+        recovery->IO->Rx_Invalid++;
+        ulCAN_RxDropped++;
+        CAN_Unlock(mask);
+        return;
+    }
+    const uint32_t mask = CAN_Lock();
+    FDCAN_HandleTypeDef *hcan = recovery->Object->CAN_Handler;
+    CANFD_Call_Back callback = recovery->Object->FD_Callback_Function;
+    const bool stale = (hcan == NULL || Generation != recovery->Object->FD_Rx_Generation ||
+                        recovery->Diagnostics->Recovery_Pending != 0U ||
+                        (hcan->Instance->PSR & FDCAN_PSR_BO) != 0U);
+    if (stale) { recovery->IO->Rx_Stale++; }
+    else if (callback == NULL) { recovery->IO->Rx_No_Callback++; }
+    if (stale || callback == NULL) { ulCAN_RxDropped++; }
+    CAN_Unlock(mask);
+    if (stale || callback == NULL) { return; }
+
+    Struct_CANFD_Rx_Buffer frame = {};
+    frame.Header = *Header;
+    frame.Length = CAN_DLC_TO_BYTES[Header->DataLength];
+    memcpy(frame.Data, Data, frame.Length);
+    /* 回调不持锁；允许从回调发送，但不得等待、延时或保留 frame 指针。 */
+    callback(&frame);
 }
 
 /**
@@ -399,41 +477,60 @@ uint8_t CAN_Send_Data(FDCAN_HandleTypeDef *hcan, uint16_t ID, uint8_t *Data, uin
 {
     Struct_CAN_Recovery_State *recovery = CAN_Get_Recovery_State(hcan);
     if (recovery == NULL) { return HAL_ERROR; }
-    if (recovery->Diagnostics->Recovery_Pending != 0U ||
-        (hcan->Instance->PSR & FDCAN_PSR_BO) != 0U)
+    if (ID > 0x7FFU || Length > 64U || (Length != 0U && Data == NULL))
     {
-        /* 恢复期间不积压过期控制目标；恢复完成后发送下一周期的新值。 */
-        return HAL_BUSY;
+        const uint32_t mask = CAN_Lock();
+        recovery->IO->Tx_Invalid++;
+        CAN_Unlock(mask);
+        return HAL_ERROR;
     }
-    FDCAN_TxHeaderTypeDef pTxHeader;
-    pTxHeader.Identifier=ID;
-    pTxHeader.IdType=FDCAN_STANDARD_ID;
-    pTxHeader.TxFrameType=FDCAN_DATA_FRAME;
-	
-	if(Length<=8)
-		pTxHeader.DataLength = Length;
-	if(Length==12)
-		pTxHeader.DataLength = FDCAN_DLC_BYTES_12;
-	if(Length==16)
-		pTxHeader.DataLength = FDCAN_DLC_BYTES_16;
-	if(Length==20)
-		pTxHeader.DataLength = FDCAN_DLC_BYTES_20;
-	if(Length==24)
-		pTxHeader.DataLength = FDCAN_DLC_BYTES_24;
-	if(Length==32)
-		pTxHeader.DataLength = FDCAN_DLC_BYTES_32;
-	if(Length==48)
-		pTxHeader.DataLength = FDCAN_DLC_BYTES_48;
-	if(Length==64)
-		pTxHeader.DataLength = FDCAN_DLC_BYTES_64;
-	
-    pTxHeader.ErrorStateIndicator=FDCAN_ESI_ACTIVE;
-    pTxHeader.BitRateSwitch=FDCAN_BRS_OFF;
-    pTxHeader.FDFormat=FDCAN_CLASSIC_CAN;
-    pTxHeader.TxEventFifoControl=FDCAN_NO_TX_EVENTS;
-    pTxHeader.MessageMarker=0;
-    // if(HAL_FDCAN_GetTxFifoFreeLevel(hcan)!=0)
-	return HAL_FDCAN_AddMessageToTxFifoQ(hcan, &pTxHeader, Data);	
+    uint32_t dlc = 0U;
+    while (CAN_DLC_TO_BYTES[dlc] < Length) { dlc++; }
+    /* HAL 按 4 字节读取源数组；即使 Length=1/2/3，也只读本地安全副本。 */
+    uint8_t payload[64] = {};
+    if (Length != 0U) { memcpy(payload, Data, Length); }
+    FDCAN_TxHeaderTypeDef header = {};
+    header.Identifier = ID;
+    header.IdType = FDCAN_STANDARD_ID;
+    header.TxFrameType = FDCAN_DATA_FRAME;
+    header.DataLength = dlc;
+    header.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+    header.BitRateSwitch = FDCAN_BRS_OFF;
+    header.FDFormat = (Length <= 8U) ? FDCAN_CLASSIC_CAN : FDCAN_FD_CAN;
+    header.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+
+    /* 多任务/中断不能同时取得同一 FIFO PutIndex；准备数据在临界区之外。 */
+    const uint32_t mask = CAN_Lock();
+    HAL_StatusTypeDef status;
+    if (recovery->Object->CAN_Handler != hcan ||
+        hcan->Init.TxElmtSize < FDCAN_DATA_BYTES_8 ||
+        hcan->Init.TxElmtSize > FDCAN_DATA_BYTES_64 ||
+        CAN_DLC_TO_BYTES[dlc] > (hcan->Init.TxElmtSize - 2U) * 4U ||
+        (Length > 8U && hcan->Init.FrameFormat == FDCAN_FRAME_CLASSIC))
+    {
+        recovery->IO->Tx_Invalid++;
+        CAN_Unlock(mask);
+        return HAL_ERROR;
+    }
+    if (recovery->Diagnostics->Recovery_Pending != 0U ||
+        (hcan->Instance->PSR & FDCAN_PSR_BO) != 0U ||
+        hcan->State != HAL_FDCAN_STATE_BUSY || HAL_FDCAN_GetTxFifoFreeLevel(hcan) == 0U)
+    {
+        status = HAL_BUSY;
+    }
+    else
+    {
+        status = HAL_FDCAN_AddMessageToTxFifoQ(hcan, &header, payload);
+    }
+    if (status == HAL_OK)
+    {
+        if (Length <= 8U) { recovery->IO->Tx_Classic_Accepted++; }
+        else { recovery->IO->Tx_FD_Accepted++; }
+    }
+    else if (status == HAL_BUSY) { recovery->IO->Tx_Busy++; }
+    else { recovery->IO->Tx_Errors++; }
+    CAN_Unlock(mask);
+    return (uint8_t)status;
 }
 uint32_t ECR_value = FDCAN1->ECR;
 int test = 0;
@@ -532,142 +629,110 @@ void TIM_CAN_PeriodElapsedCallback()
 
 }
 
-/**
- * @brief 辅助函数：把 CAN 帧直接投递给控制任务
- *
- * @param hcan CAN句柄
- * @param fifo 接收 FIFO
- * @param can_instance CAN 实例编号 1/2/3
- * @param pxHigherPriorityTaskWoken 上下文切换标志
- */
+/** @brief 有界排空本次 IRQ 已有消息：经典 CAN 原地回调，FD 完整副本入队。 */
 static void CAN_Rx_EnqueueFromISR(FDCAN_HandleTypeDef *hcan, uint32_t fifo,
-                                   uint8_t can_instance,
-                                   BaseType_t *pxHigherPriorityTaskWoken)
+                                  uint32_t fifo_its, BaseType_t *higher_priority_woken)
 {
-    FreeRTOS_Control_RxMsg_t msg = {};
-    FDCAN_RxHeaderTypeDef *header = &msg.payload.can.header;
-    uint8_t rx_data[64];
-
-    msg.type = FREERTOS_CONTROL_INPUT_CAN;
-    msg.payload.can.can_instance = can_instance;
-    /* ISR 仅读取原始计数；随帧入队，时间差换算留给控制任务。 */
-#if PERFORMANCE_TEST_ENABLE
-    msg.payload.can.rx_cycle = DWT->CYCCNT;
-#endif
-
-    if (HAL_FDCAN_GetRxMessage(hcan, fifo, header, rx_data) != HAL_OK ||
-        header->DataLength > FDCAN_DLC_BYTES_8)
+    Struct_CAN_Recovery_State *recovery = CAN_Get_Recovery_State(hcan);
+    if (recovery == NULL) { return; }
+    const bool fifo1 = (fifo == FDCAN_RX_FIFO1);
+    if ((fifo_its & (fifo1 ? FDCAN_IT_RX_FIFO1_FULL : FDCAN_IT_RX_FIFO0_FULL)) != 0U)
     {
-
-        ulCAN_RxDropped++;
-        return;
+        recovery->IO->Rx_FIFO_Full_Events++;
     }
-    memcpy(msg.payload.can.data, rx_data, header->DataLength);
-
-    /* 队列满或调度器未启动即丢帧计数，ISR 内绝不阻塞。 */
-    if (xQueue_Control_Rx == NULL ||
-        xQueueSendFromISR(xQueue_Control_Rx, &msg, pxHigherPriorityTaskWoken) != pdPASS)
+    if ((fifo_its & (fifo1 ? FDCAN_IT_RX_FIFO1_MESSAGE_LOST : FDCAN_IT_RX_FIFO0_MESSAGE_LOST)) != 0U)
     {
-        ulCAN_RxDropped++;
-        return;
+        recovery->IO->Rx_FIFO_Lost_Events++;
+        ulCAN_RxDropped++; // IRQ 标志会合并，计数表示事件次数而非精确丢失帧数
+    }
+    uint32_t remaining = HAL_FDCAN_GetRxFifoFillLevel(hcan, fifo);
+    const uint32_t capacity = fifo1 ? hcan->Init.RxFifo1ElmtsNbr : hcan->Init.RxFifo0ElmtsNbr;
+    if (remaining > capacity) { remaining = capacity; }
+    while (remaining-- > 0U)
+    {
+        FreeRTOS_Control_RxMsg_t msg = {};
+        FreeRTOS_CAN_RxMsg_t *frame = &msg.payload.can;
+        msg.type = FREERTOS_CONTROL_INPUT_CAN;
+        frame->can_instance = (uint8_t)(recovery - CAN_Recovery_States + 1U);
+        frame->generation = recovery->Object->FD_Rx_Generation;
+#if PERFORMANCE_TEST_ENABLE
+        frame->rx_cycle = DWT->CYCCNT;
+#endif
+        /* HAL 根据 DLC 直接复制数据，目标必须从一开始就有 64 字节容量。 */
+        if (HAL_FDCAN_GetRxMessage(hcan, fifo, &frame->header, frame->data) != HAL_OK)
+        {
+            recovery->IO->Rx_Read_Errors++;
+            ulCAN_RxDropped++;
+            break; // 避免在同一条无法读取的 FIFO 元素上忙等
+        }
+        const FDCAN_RxHeaderTypeDef *header = &frame->header;
+        if (header->DataLength > FDCAN_DLC_BYTES_64 ||
+            header->RxFrameType != FDCAN_DATA_FRAME ||
+            (header->FDFormat != FDCAN_CLASSIC_CAN && header->FDFormat != FDCAN_FD_CAN) ||
+            (header->FDFormat == FDCAN_CLASSIC_CAN && header->DataLength > FDCAN_DLC_BYTES_8))
+        {
+            recovery->IO->Rx_Invalid++;
+            ulCAN_RxDropped++;
+            continue;
+        }
+        if (header->FDFormat == FDCAN_CLASSIC_CAN)
+        {
+            recovery->IO->Rx_Classic++;
+            Struct_CAN_Rx_Buffer *buffer = &recovery->Object->Rx_Buffer;
+            buffer->Header = *header;
+            memset(buffer->Data, 0, sizeof(buffer->Data));
+            memcpy(buffer->Data, frame->data, CAN_DLC_TO_BYTES[header->DataLength]);
+#if PERFORMANCE_TEST_ENABLE
+            buffer->Rx_Cycle = frame->rx_cycle;
+#endif
+            if (recovery->Object->Callback_Function != NULL)
+            {
+                recovery->Object->Callback_Function(buffer);
+            }
+            else
+            {
+                recovery->IO->Rx_No_Callback++;
+                ulCAN_RxDropped++;
+            }
+            continue;
+        }
+        recovery->IO->Rx_FD++;
+        if (recovery->Diagnostics->Recovery_Pending != 0U || (hcan->Instance->PSR & FDCAN_PSR_BO) != 0U)
+        {
+            recovery->IO->Rx_Stale++;
+            ulCAN_RxDropped++;
+        }
+        else if (recovery->Object->FD_Callback_Function == NULL)
+        {
+            recovery->IO->Rx_No_Callback++;
+            ulCAN_RxDropped++;
+        }
+        else if (xQueue_Control_Rx == NULL || xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED)
+        {
+            recovery->IO->Rx_Queue_Not_Ready++;
+            ulCAN_RxDropped++;
+        }
+        else if (xQueueSendFromISR(xQueue_Control_Rx, &msg, higher_priority_woken) != pdPASS)
+        {
+            recovery->IO->Rx_Queue_Full++;
+            ulCAN_RxDropped++;
+        }
     }
 }
 
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hcan, uint32_t RxFifo0ITs)
 {
-    //选择回调函数
-    if (hcan->Instance == FDCAN1)
-    {
-        HAL_FDCAN_GetRxMessage(hcan, FDCAN_RX_FIFO0, &CAN1_Manage_Object.Rx_Buffer.Header, CAN1_Manage_Object.Rx_Buffer.Data);
-        CAN1_Manage_Object.Callback_Function(&CAN1_Manage_Object.Rx_Buffer);
-    }
-    else if (hcan->Instance == FDCAN2)
-    {
-        HAL_FDCAN_GetRxMessage(hcan, FDCAN_RX_FIFO0, &CAN2_Manage_Object.Rx_Buffer.Header, CAN2_Manage_Object.Rx_Buffer.Data);
-        CAN2_Manage_Object.Callback_Function(&CAN2_Manage_Object.Rx_Buffer);
-    }
-    else if (hcan->Instance == FDCAN3)
-    {
-        HAL_FDCAN_GetRxMessage(hcan, FDCAN_RX_FIFO0, &CAN3_Manage_Object.Rx_Buffer.Header, CAN3_Manage_Object.Rx_Buffer.Data);
-        CAN3_Manage_Object.Callback_Function(&CAN3_Manage_Object.Rx_Buffer);
-    }
+    BaseType_t higher_priority_woken = pdFALSE;
+    CAN_Rx_EnqueueFromISR(hcan, FDCAN_RX_FIFO0, RxFifo0ITs, &higher_priority_woken);
+    portYIELD_FROM_ISR(higher_priority_woken);
 }
 
-void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hcan,uint32_t RxFifo1ITs)
+void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hcan, uint32_t RxFifo1ITs)
 {
-    //选择回调函数
-    if (hcan->Instance == FDCAN1)
-    {
-        HAL_FDCAN_GetRxMessage(hcan, FDCAN_RX_FIFO1, &CAN1_Manage_Object.Rx_Buffer.Header, CAN1_Manage_Object.Rx_Buffer.Data);
-        CAN1_Manage_Object.Callback_Function(&CAN1_Manage_Object.Rx_Buffer);
-    }
-    else if (hcan->Instance == FDCAN2)
-    {
-        HAL_FDCAN_GetRxMessage(hcan, FDCAN_RX_FIFO1, &CAN2_Manage_Object.Rx_Buffer.Header, CAN2_Manage_Object.Rx_Buffer.Data);
-        CAN2_Manage_Object.Callback_Function(&CAN2_Manage_Object.Rx_Buffer);
-    }
-    else if (hcan->Instance == FDCAN3)
-    {
-        HAL_FDCAN_GetRxMessage(hcan, FDCAN_RX_FIFO1, &CAN3_Manage_Object.Rx_Buffer.Header, CAN3_Manage_Object.Rx_Buffer.Data);
-        CAN3_Manage_Object.Callback_Function(&CAN3_Manage_Object.Rx_Buffer);
-    }
+    BaseType_t higher_priority_woken = pdFALSE;
+    CAN_Rx_EnqueueFromISR(hcan, FDCAN_RX_FIFO1, RxFifo1ITs, &higher_priority_woken);
+    portYIELD_FROM_ISR(higher_priority_woken);
 }
-
-/**
- * @brief HAL库CAN接收FIFO0中断（FreeRTOS 版本）
- *
- * @param hcan CAN编号
- *
- * @note 仅读取硬件 FIFO 并直接投递控制队列，实际解析在控制任务。
- */
-// void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hcan, uint32_t RxFifo0ITs)
-// {
-//     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-
-//     UNUSED(RxFifo0ITs);
-
-//     if (hcan->Instance == FDCAN1)
-//     {
-//         CAN_Rx_EnqueueFromISR(hcan, FDCAN_RX_FIFO0, 1, &xHigherPriorityTaskWoken);
-//     }
-//     else if (hcan->Instance == FDCAN2)
-//     {
-//         CAN_Rx_EnqueueFromISR(hcan, FDCAN_RX_FIFO0, 2, &xHigherPriorityTaskWoken);
-//     }
-//     else if (hcan->Instance == FDCAN3)
-//     {
-//         CAN_Rx_EnqueueFromISR(hcan, FDCAN_RX_FIFO0, 3, &xHigherPriorityTaskWoken);
-//     }
-
-//     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-// }
-
-/**
- * @brief HAL库CAN接收FIFO1中断（FreeRTOS 版本）
- *
- * @param hcan CAN编号
- */
-// void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hcan, uint32_t RxFifo1ITs)
-// {
-//     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-
-//     UNUSED(RxFifo1ITs);
-
-//     if (hcan->Instance == FDCAN1)
-//     {
-//         CAN_Rx_EnqueueFromISR(hcan, FDCAN_RX_FIFO1, 1, &xHigherPriorityTaskWoken);
-//     }
-//     else if (hcan->Instance == FDCAN2)
-//     {
-//         CAN_Rx_EnqueueFromISR(hcan, FDCAN_RX_FIFO1, 2, &xHigherPriorityTaskWoken);
-//     }
-//     else if (hcan->Instance == FDCAN3)
-//     {
-//         CAN_Rx_EnqueueFromISR(hcan, FDCAN_RX_FIFO1, 3, &xHigherPriorityTaskWoken);
-//     }
-
-//     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-// }
 
 int ppp=0;
 void HAL_FDCAN_TxBufferCompleteCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t BufferIndexes)

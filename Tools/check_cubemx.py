@@ -112,10 +112,14 @@ def audit_fdcan(root, ioc):
     source = uncomment(read(root / "Core/Src/fdcan.c"))
     header = uncomment(read(root / "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_fdcan.h"))
     modes = set(re.findall(r"^\s*#\s*define\s+(FDCAN_MODE_\w+)\b", header, re.M))
+    ram_ranges = []
+    fd_fields = {"FrameFormat": "FDCAN_FRAME_FD_NO_BRS",
+                 "RxFifo0ElmtSize": "FDCAN_DATA_BYTES_64", "RxFifo1ElmtSize": "FDCAN_DATA_BYTES_64",
+                 "RxBufferSize": "FDCAN_DATA_BYTES_64", "TxElmtSize": "FDCAN_DATA_BYTES_64"}
     for instance in (1, 2, 3):
         prefix = "FDCAN%d" % instance
         parameters = set(ioc.get(prefix + ".IPParameters", "").split(","))
-        require({"Mode", "TxBuffersNbr"} <= parameters,
+        require({"Mode", "TxBuffersNbr"} | set(fd_fields) <= parameters,
                 prefix + ": explicitly configure Mode and TxBuffersNbr in CubeMX/IPParameters; defaults are unsafe")
         values = {}
         for field in ("Mode", "TxBuffersNbr", "TxFifoQueueElmtsNbr", "MessageRAMOffset"):
@@ -138,7 +142,31 @@ def audit_fdcan(root, ioc):
                     key + ": IOC/source mismatch; regenerate Core/Src/fdcan.c from the saved FDCAN configuration")
         require(values["TxBuffersNbr"] + values["TxFifoQueueElmtsNbr"] == 32,
                 prefix + ": CubeMX H7 requires TxBuffersNbr + TxFifoQueueElmtsNbr = 32; fix both TX allocation fields")
-    print("PASS: all 3 FDCAN modes/TX allocations/message RAM offsets match the explicit CubeMX model.")
+        for field, expected in fd_fields.items():
+            assignments = re.findall(r"\bhfdcan%d\.Init\.%s\s*=\s*([^;]+);" % (instance, field), source)
+            require(assignments == [expected] and ioc.get(prefix + "." + field) == expected,
+                    prefix + "." + field + ": keep 64-byte CAN FD without BRS in IOC and source")
+        def number(field):
+            assignments = re.findall(r"\bhfdcan%d\.Init\.%s\s*=\s*(\d+)[uUlL]*\s*;" % (instance, field), source)
+            require(len(assignments) == 1, prefix + ": missing numeric initialization " + field)
+            value = int(assignments[0])
+            require(prefix + "." + field not in ioc or int(ioc[prefix + "." + field]) == value,
+                    prefix + "." + field + ": IOC/source mismatch")
+            return value
+        clock = int(ioc["RCC.FDCANFreq_Value"])
+        divisor = number("NominalPrescaler") * (1 + number("NominalTimeSeg1") + number("NominalTimeSeg2"))
+        require(clock == 1000000 * divisor, prefix + ": nominal rate must stay exactly 1 Mbps")
+        words = number("StdFiltersNbr") + 2 * number("ExtFiltersNbr") + 2 * number("TxEventsNbr")
+        # Each 64-byte RX/TX element contains two header words and sixteen payload words.
+        words += 18 * sum(number(field) for field in
+                          ("RxFifo0ElmtsNbr", "RxFifo1ElmtsNbr", "RxBuffersNbr", "TxBuffersNbr", "TxFifoQueueElmtsNbr"))
+        start = values["MessageRAMOffset"]
+        ram_ranges.append((start, start + words, prefix))
+        require(start + words <= 2559, prefix + ": exceeds the HAL's 10 KiB message RAM end bound")
+    ram_ranges.sort()
+    require(all(left[1] <= right[0] for left, right in zip(ram_ranges, ram_ranges[1:])),
+            "FDCAN message RAM allocations overlap: " + str(ram_ranges))
+    print("PASS: 3 FDCAN instances: 1 Mbps, FD without BRS, 64-byte elements, IOC/source match, nonoverlapping RAM.")
 
 
 def project_path(directory, value):

@@ -2,7 +2,7 @@
 
 本工程基于 STM32H723VGTx，由上赛季 `ZLLC_2026` 裸机框架演进而来。保留原有驱动、设备、算法、底盘/云台/发射机构与整车交互分层，主要调整任务调度、数据交接、通信恢复和调试工具，并更新 27 赛季裁判系统通信协议。
 
-对比基准为上赛季裸机工程 [ZLLC_2026（M65 分支）](https://github.com/ZLLC-NEUQ/ZLLC_2026/tree/M65)。本文更新于 2026-10-30；表格中的“当前实现”描述已有代码，“后续建议”描述下一步开发约定，尚未实现的能力不作为框架现有保证。
+对比基准为上赛季裸机工程 [ZLLC_2026（M65 分支）](https://github.com/ZLLC-NEUQ/ZLLC_2026/tree/M65)。本文更新于 2026-11-24；表格中的“当前实现”描述已有代码，“后续建议”描述下一步开发约定，尚未实现的能力不作为框架现有保证。
 
 阅读顺序：[开始使用](#开始使用) → [与上赛季框架的主要对比](#与上赛季框架的主要对比) → [代码基本架构](#代码基本架构) → [测试与诊断工具的使用](#测试与诊断工具的使用) → [后续开发与书写规范](#后续开发与书写规范)。
 
@@ -24,18 +24,22 @@
 | --- | --- |
 | `PERFORMANCE_TEST_ENABLE` | 默认 1；0 裁剪耗时、频率、栈/堆等测试插桩，不裁剪业务时基、任务及通信恢复 |
 | `EKF_USE_TCM` | 默认 1；选择带 ITCM 段属性的算法及 DTCM 静态工作区，0 回到原 Flash/动态分配路径 |
+| `IMU_USE_VQF` | 默认 1；IMU 使用六轴 VQF，设为 0 回到 QuaternionEKF |
+| `VQF_USE_TCM` | 默认 1；VQF 热函数进入 ITCM，首个 IMU 的完整算法对象进入 DTCM；0 使用普通内存 |
 | I-Cache | [main.c](Core/Src/main.c) 已开启，普通 Flash 取指由硬件自动缓存 |
 | D-Cache | 当前未开启，通信缓冲区尚未完成统一的缓存一致性改造 |
 
-两个数值宏支持编译参数 `-D宏名=0/1` 覆盖。宏为 1 只能说明选择了对应代码路径，TCM 实际地址还必须看本次 map。
+上述数值宏支持编译参数 `-D宏名=0/1` 覆盖。宏为 1 只能说明选择了对应代码路径，TCM 实际地址还必须看本次 map。VQF 参数、坐标约定和 TCM 布局见 [VQF FreeRTOS 移植说明](Docs/VQF_FreeRTOS.md)。
 
 | 构建入口 | 配置与注意点 |
 | --- | --- |
 | Keil uVision | [ZLLC_2027.uvprojx](MDK-ARM/ZLLC_2027.uvprojx)，明确使用 [ekf_tcm.sct](MDK-ARM/ekf_tcm.sct)，输出在 `MDK-ARM/output/` |
-| MDK 目录 EIDE | [配置文件](MDK-ARM/.eide/eide.yml) 中明确使用 `ekf_tcm.sct`；产物路径以目标配置为准 |
-| 根目录 EIDE | [配置文件](.eide/eide.yml) 当前未启用自定义 scatter，`scatterFilePath` 为空；不能直接认定与 MDK 的 TCM 布局相同 |
+| MDK 目录 EIDE | [配置文件](MDK-ARM/.eide/eide.yml) 的 `ZLLC_2027` 目标使用 `ekf_tcm.sct`，产物在 `MDK-ARM/ZLLC_2027/`；保留的旧 `Sentry` 目标使用不同选项 |
+| 根目录 EIDE | [配置文件](.eide/eide.yml) 已启用 `MDK-ARM/ekf_tcm.sct`，与 Keil 和 MDK 目录的 `ZLLC_2027` 目标共用链接布局，产物在 `build/ZLLC_2027/` |
 
-根目录 EIDE 常用输出为 `build/ZLLC_2027/`，与 MDK 输出可能属于不同角色、不同时间或不同链接布局。需要 TCM 时，先确认实际链接命令和执行区；不要用另一个目录的旧 `.map/.axf` 解释当前板上的行为。VS Code 构建入口见 [tasks.json](.vscode/tasks.json)。
+三个 `ZLLC_2027` 入口引用同一份源码和链接脚本，但输出目录独立；切换底盘/云台角色后必须重新构建，不能用另一个目录的旧 `.map/.axf` 解释当前板上的行为。VS Code 固件构建使用 EIDE 的 `ZLLC_2027` 目标。根目录和 MDK 目录的 `.code-workspace` 均提供 `CAN FD: 配置与优先级检查`、`CAN FD: 宿主行为测试` 两个任务，可通过“终端 → 运行任务”执行。
+
+CAN/FreeRTOS 头文件已加入三套工程树，`Validation` 分组包含 CAN FD 测试、配置检查、README 和 IOC 文件；该分组在 EIDE 和 Keil 中均排除固件编译，宿主测试不会链接进单片机程序。
 
 ## 与上赛季框架的主要对比
 
@@ -56,7 +60,7 @@
 对比时需保留三个事实：
 
 - 原 TIM4/TIM5 的实际配置也是 1ms，不能因 `Task_100us_Fast` 的历史名称，把本次改造描述为从 100µs 改到 1ms。
-- 当前 CAN 仍在 ISR 直接解析（为了减少延迟），并未完成所有通信的任务化；USB 上位机解析也未接通。
+- 普通 CAN 仍在 ISR 直接解析（为了减少延迟）；新增 CAN FD 复制整帧入控制输入队列，在 Control 任务解析。USB 上位机解析尚未接通。
 - 上赛季已有错误恢复但不全，当前改进在于恢复的上下文、统一入口、失败处理和诊断。
 
 原裸机框架调度直观、运行开销低、分层接口清楚，这些优点应继续保留。后续新增功能优先复用现有设备接口和任务，不必为每个设备都新建任务。
@@ -115,7 +119,8 @@ flowchart LR
     Q --> C[Control 任务]
     I[IMU 任务] -->|最新完整快照| IQ[IMU 快照队列]
     IQ --> C
-    K[CAN ISR] -->|当前直接解析| D[设备反馈和业务状态]
+    K[CAN ISR] -->|普通 CAN 直接解析| D[设备反馈和业务状态]
+    K -->|CAN FD 完整副本| Q
     D --> C
     C -->|目标和控制计算| M[底盘 / 云台 / 发射机构]
     C -->|UI 快照| B[Background 任务]
@@ -140,6 +145,46 @@ USART1、UART5、USART10 统一由 [UART_Error_Service()](User/Driver/Src/drv_ua
 三路 CAN 由 [CAN_Error_Service()](User/Driver/Src/drv_can.cpp) 分路处理 Bus-Off 和严重 RAM 错误，失败后每 100ms 重试。一般 FIFO 满/空不会触发同样的重初始化。报文自动重传与故障恢复是不同机制，当前 `AutoRetransmission` 为关闭。
 
 GIMBAL 的上位机角度入口是 CAN1 标准 ID `0xA1`。前 6 字节为小端的 `alive:uint8`、`Fire:uint8`、`yaw:int16`、`pitch:int16`，角度按弧度乘以 10000 编码。只有 MINIPC 模式、通信在线和 `alive != 0` 同时成立时采用接收角度。USB 虽保留接口，但当前没有有效 MiniPC 解析，不能据此直接使用 USB 自瞄。
+
+### 普通 CAN 与 CAN FD 的使用
+
+三路 FDCAN 均支持经典帧和最长 64 字节 FD 帧，速率固定为 1 Mbps，关闭 BRS（帧内速率切换）。原有 `CAN_Init()`、8 字节收发缓冲区、普通 CAN 回调和周期发送逻辑保持原接口。FD 功能不默认发送任何新报文，载荷、标准标识符及发送周期由用户决定。
+
+`CAN_Send_Data(hcan, id, data, length)` 根据 `length` 自动选帧：0～8 字节发送普通 CAN，9～64 字节发送 CAN FD；超过 64 字节、标准标识符超过 `0x7FF` 或非零长度对应空指针时返回 `HAL_ERROR`。FD 非标准帧长向上补齐到 12/16/20/24/32/48/64 字节，尾部补零，例如 56 字节发送为 64 字节；不插入协议头或有效长度字段。接收端只能得知总线实际长度，原始有效长度如有需要须由用户协议表达。
+
+以下代码是用户接入示例，不会由框架自动运行。`0x300` 只是示例标识符，需要用户自行选择；发送数组中的全部 64 字节均可自行填写：
+
+```cpp
+static const uint16_t User_CANFD_ID = 0x300;
+static uint8_t User_CANFD_Tx[64] = {};
+static uint8_t User_CANFD_Rx[64] = {};
+
+void User_CANFD_Callback(Struct_CANFD_Rx_Buffer *frame)
+{
+    if (frame->Header.Identifier != User_CANFD_ID || frame->Length != 64U) { return; }
+    memcpy(User_CANFD_Rx, frame->Data, sizeof(User_CANFD_Rx));
+    // 在 Control 任务处理自己的协议；禁止延时或等待，frame 指针不能保留。
+}
+
+// 在 Task_Init 中 CAN_Init(&hfdcan2, 原有普通CAN回调) 之后、FreeRTOS_Start 之前注册：
+// HAL_StatusTypeDef status = CAN_Register_FD_Callback(&hfdcan2, User_CANFD_Callback);
+
+uint8_t User_Send_CANFD(void)
+{
+    // 由 Control 任务填充 User_CANFD_Tx，然后在用户选择的周期调用。
+    return CAN_Send_Data(&hfdcan2, User_CANFD_ID, User_CANFD_Tx, sizeof(User_CANFD_Tx));
+}
+```
+
+`CAN_Register_FD_Callback()` 仅支持调度器启动前注册，传入 `NULL` 表示不接收 FD；运行中注册返回 `HAL_BUSY`。未注册 FD 回调不影响普通 CAN。接收根据帧头格式分流，即使 FD 帧只有 8 字节，也只调用 FD 回调。`frame->Length` 是解码后的实际字节数，`frame->Header.DataLength` 保持 HAL 的 DLC（数据长度编码），64 字节的 DLC 是 15，不能用它直接作为复制长度。
+
+普通 CAN 仍在中断直接回调；FD 使用现有 Control 输入队列及每轮 64 条消息的处理预算，不增加任务。回调应短时完成，不保留临时帧指针；若其他任务使用用户接收数组，需要用户定义快照或同步机制。队列深度不变，FD 消息仍小于原 UART 消息，未增大共享队列的单项容量。
+
+发送函数不等待 FIFO、不自动重试：`HAL_OK` 只表示已提交外设队列，`HAL_BUSY` 表示 FIFO 满、未启动或正在恢复，其他错误返回 HAL 对应状态。发送前驱动复制完整载荷，返回后不再引用发送数组；但调用期间数组必须保持稳定。多任务发送的 FIFO 提交使用保存中断状态的短临界区，故障重初始化和用户回调不在该临界区执行。
+
+接收中断有界处理本次已有消息，检查 HAL 返回值，普通 CAN 短帧尾部清零。队列未就绪、队列满、未注册回调及异常帧均安全丢弃。每路 `CAN1/2/3_IO_Diagnostics` 记录经典/FD 收发、发送忙、读失败、FIFO 满/丢失事件、软件队列丢弃等；FIFO 事件可能合并，不能当作精确丢帧数。Bus-Off/严重 RAM 错误沿用任务恢复，恢复时使本路旧 FD 队列消息失效，不清空共用的 UART/USB 队列。
+
+宿主验证：`python Tools/check_can_fd.py`，自动探测可启动的原生 `g++` 或 MSVC 编译器，也可用 `--cxx` 指定原生 MSVC 的 `Hostx64/x64/cl.exe`；脚本自动配置已安装的 Windows SDK。测试四种角色/性能宏组合，覆盖选帧、补零、回调上下文、队列故障与恢复。`python Tools/check_cubemx.py` 同时检查 IOC/源码配置、1 Mbps 位时序、64 字节元素容量及三路消息 RAM 不重叠。宿主及编译验证不能代替上板通信、负载和时序验证。
 
 ### 27 赛季裁判系统通信协议
 
@@ -235,7 +280,7 @@ PERF_STOP(Example_Timing);
 
 - `START/STOP` 放在同一作用域，中间不能提前 `return`；不要直接放在无花括号的 `if` 下。
 - 每个统计对象只由一个任务或一种中断更新；不同任务、递归或嵌套 IRQ 使用不同对象。
-- `PERF_EVENT_AT(object, cycle)` 使用 ISR 保存的时间戳，避免任务批量解析制造假频率；当前 UART 采用此方式，CAN 在实际解析的 ISR 内采样。
+- `PERF_EVENT_AT(object, cycle)` 使用 ISR 保存的时间戳，避免任务批量解析制造假频率；普通 CAN 在实际解析的 ISR 内采样，UART/FD 任务回调可通过 `FreeRTOS_GetRxCycle()` 取得本帧 ISR 时间戳。
 - 关闭宏后，宏参数也不求值，不能把必须执行的业务操作放入统计宏参数。
 - 耗时包含抢占，外层测量包含内层统计开销；单段计时需小于约 8.95 秒。
 
@@ -295,7 +340,7 @@ CAN3_Recovery_Diagnostics
 
 UART 看错误次数、`Recovery_Count`、`Restart_Failures`、最近错误和收发待恢复标志；CAN 看 `BusOff_Events`、重启尝试/成功/失败及 `Recovery_Pending`。CAN 的重启成功计数只表示 HAL 接受重启。恢复对象包含功能状态，调试时不要整体清零；它们不受性能宏裁剪。
 
-`ulUART_RxDropped` 覆盖 UART 入队/分帧等丢弃；`ulCAN_RxDropped` 来自目前未使用的 CAN 队列路径，不能当作当前 CAN ISR 的完整丢帧指标。
+`ulUART_RxDropped` 覆盖 UART 入队/分帧等丢弃；`ulCAN_RxDropped` 汇总 CAN 读取/格式检查、FD 入队及恢复代次检查中的丢弃，并累计 FIFO 丢失事件，不能当作物理总线精确丢帧数。具体原因看各路 `CAN*_IO_Diagnostics`。
 
 ## 后续开发与书写规范
 
@@ -364,9 +409,9 @@ void Set_Target_Yaw(float target_yaw_deg);
 
 | 方向 | 当前需要继续处理的事项 |
 | --- | --- |
-| 构建一致性 | 统一根 EIDE 与 MDK 的链接布局，清楚区分底盘/云台产物，避免宏、map 和烧录文件不对应 |
-| 静态检查跟进 | 登记 Alive 任务和动态 IRQ 恢复入口，再让优先级/CubeMX 检查覆盖当前框架 |
-| CAN 接收完整性 | 活动回调尚未检查 `HAL_FDCAN_GetRxMessage()` 返回值，且一次回调只读取一帧；应设计读取失败和 FIFO 积压策略 |
+| 构建一致性 | 三个 `ZLLC_2027` 入口已共用源码和链接脚本；继续区分底盘/云台、旧 Sentry 与各输出目录的产物，避免宏、map 和烧录文件不对应 |
+| 静态检查跟进 | 已登记 Alive 任务和 CAN 动态 IRQ 恢复入口；新增中断/任务时同步扩展审计 |
+| CAN 接收完整性 | 已加入读取失败处理、FIFO 有界排空及 FD 队列丢弃诊断；上板测量高负载下丢帧与最坏 ISR/Control 耗时 |
 | 共享状态收敛 | 进一步明确 CAN ISR、Control、Alive 对同一对象的写入边界，按实测延迟决定是否采用统一消息或快照 |
 | USB 接口 | 确认是否需要作为有效上位机入口，再补齐协议、边界检查、分派和在线监控 |
 | 运行验证 | 覆盖启动、模式切换、通信高峰、失联重连和错误恢复，记录最坏耗时与历史最小余量 |

@@ -28,8 +28,8 @@
 #error "PERFORMANCE_TEST_ENABLE must be 0 or 1"
 #endif
 
-/* EKF/IMU 热点存放方式：0 = 原来的 Flash + 动态内存；1 = ITCM + DTCM 静态工作区。
- * 同时控制 IMU 主处理函数、矩阵乘法/求逆、坐标变换及 Get_Angle 的 ITCM 版本。
+/* EKF 热点存放方式：0 = 原来的 Flash + 动态内存；1 = ITCM + DTCM 静态工作区。
+ * 选用 EKF 时也控制公共 IMU 热函数；选用 VQF 时由 VQF_USE_TCM 控制。
  * 修改后重新编译并下载；开启性能测试时可观察 EKF_Timing（单位 us）。
  * 允许构建检查通过 -DEKF_USE_TCM=0/1 覆盖，日常只需修改这里。
  */
@@ -39,6 +39,18 @@
 
 #if (EKF_USE_TCM != 0) && (EKF_USE_TCM != 1)
 #error "EKF_USE_TCM must be 0 or 1"
+#endif
+
+/* 姿态算法：1 = 移植的六轴 VQF；0 = 原 QuaternionEKF。重编译后生效。 */
+#ifndef IMU_USE_VQF
+#define IMU_USE_VQF 1
+#endif
+#ifndef VQF_USE_TCM
+#define VQF_USE_TCM 1
+#endif
+#if ((IMU_USE_VQF != 0) && (IMU_USE_VQF != 1)) || \
+    ((VQF_USE_TCM != 0) && (VQF_USE_TCM != 1))
+#error "IMU_USE_VQF and VQF_USE_TCM must be 0 or 1"
 #endif
 
 //底盘或云台状态

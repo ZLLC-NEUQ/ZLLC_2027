@@ -16,6 +16,7 @@ virtualFolder:
       files:
         - path: User/Task/Src/freertos_tasks.cpp
         - path: User/Task/Src/tsk_config_and_callback.cpp
+        - path: User/Task/Inc/freertos_tasks.h
       folders: []
     - name: Interaction
       files:
@@ -54,6 +55,7 @@ virtualFolder:
         - path: User/Driver/Src/drv_adc.cpp
         - path: User/Driver/Src/drv_bsp-boarda.cpp
         - path: User/Driver/Src/drv_can.cpp
+        - path: User/Driver/Inc/drv_can.h
         - path: User/Driver/Src/drv_dwt.cpp
         - path: User/Driver/Src/drv_i2c.cpp
         - path: User/Driver/Src/drv_math.cpp
@@ -67,6 +69,9 @@ virtualFolder:
         - path: User/Algorithm/Src/alg_filter.cpp
         - path: User/Algorithm/Src/alg_fsm.cpp
         - path: User/Algorithm/Src/alg_MahonyAHRS.cpp
+        - path: User/Algorithm/Src/alg_VQF.cpp
+        - path: User/Algorithm/Inc/alg_VQF.h
+        - path: User/Algorithm/Inc/vqf_tcm.h
         - path: User/Algorithm/Src/alg_pid.cpp
         - path: User/Algorithm/Src/alg_slope.cpp
         - path: User/Algorithm/Src/kalman_filter.cpp
@@ -171,6 +176,15 @@ virtualFolder:
     - name: ::CMSIS
       files: []
       folders: []
+    - name: Validation
+      files:
+        - path: Tools/check_can_fd.py
+        - path: Tools/can_fd_tests.cpp
+        - path: Tools/check_cubemx.py
+        - path: Tools/check_priorities.py
+        - path: README.md
+        - path: ZLLC_2027.ioc
+      folders: []
 dependenceList: []
 outDir: build
 miscInfo:
@@ -209,7 +223,8 @@ targets:
         - .cmsis/include
         - MDK-ARM/RTE/_ZLLC_2027
       libList: []
-    excludeList: []
+    excludeList:
+      - <virtual_root>/Validation
     settings:
       debugger: cortex-debug
     toolchain: AC6
@@ -240,12 +255,12 @@ targets:
           linker:
             $outputTaskExcludes:
               - .bin
-            misc-controls: --diag_suppress=L6329 "Drivers/CMSIS/DSP/Lib/ARM/arm_cortexM7lfdp_math.lib"
+            misc-controls: --diag_suppress=L6329,L6314 "Drivers/CMSIS/DSP/Lib/ARM/arm_cortexM7lfdp_math.lib"
             output-format: elf
             ro-base: ""
             rw-base: ""
             xo-base: ""
-        scatterFilePath: ""
+        scatterFilePath: MDK-ARM/ekf_tcm.sct
         storageLayout:
           RAM:
             - id: 1
@@ -319,7 +334,7 @@ targets:
                 size: "0x0"
                 startAddr: "0x0"
               tag: IROM
-        useCustomScatterFile: false
+        useCustomScatterFile: true
     uploadConfigMap:
       JLink:
         baseAddr: ""

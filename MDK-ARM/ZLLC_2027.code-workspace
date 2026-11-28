@@ -5,5 +5,26 @@
         }
     ],
     "settings": {},
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "CAN FD: 配置与优先级检查",
+                "type": "process",
+                "command": "python",
+                "args": ["${workspaceFolder}/../Tools/check_cubemx.py"],
+                "options": {"cwd": "${workspaceFolder}/.."},
+                "problemMatcher": []
+            },
+            {
+                "label": "CAN FD: 宿主行为测试",
+                "type": "process",
+                "command": "python",
+                "args": ["${workspaceFolder}/../Tools/check_can_fd.py"],
+                "options": {"cwd": "${workspaceFolder}/.."},
+                "problemMatcher": []
+            }
+        ]
+    },
     "extensions": {}
 }
