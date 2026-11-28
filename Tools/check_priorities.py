@@ -243,7 +243,21 @@ def audit(root):
             require((pre, sub) == (expected[irq], 0),
                     "%s: %s = (%s,%s), policy expects (%s,0)" % (context, irq, pre, sub, expected[irq]))
             settings[irq] = pre
-        for args, _ in calls(text, "HAL_NVIC_EnableIRQ"):
+        for args, position in calls(text, "HAL_NVIC_EnableIRQ"):
+            if relative == "User/Driver/Src/drv_can.cpp" and args == ["irqn"]:
+                # Recovery restores only the saved IRQ selected from these three CAN instances.
+                bodies = {name: text[start:end] for name, start, end in functions(text)}
+                owner = [name for name, start, end in functions(text) if start <= position < end]
+                require(owner == ["CAN_Recover_One"] and
+                        set(re.findall(r"return\s+(\w+_IRQn)\s*;", bodies.get("CAN_Get_IRQn", ""))) ==
+                        {"FDCAN%d_IT0_IRQn" % n for n in (1, 2, 3)},
+                        "CAN recovery IRQ selector no longer matches the audited CAN routes")
+                body = bodies["CAN_Recover_One"]
+                require(re.search(r"irqn\s*=\s*CAN_Get_IRQn\(hcan\)", body) and
+                        re.search(r"irq_enabled\s*=\s*NVIC_GetEnableIRQ\(irqn\)", body) and
+                        re.search(r"if\s*\(irq_enabled\s*!=\s*0U\)\s*\{\s*HAL_NVIC_EnableIRQ\(irqn\)", body),
+                        "CAN recovery must restore only an IRQ that was previously enabled")
+                continue
             require(len(args) == 1 and args[0] in expected, "Unaudited enabled IRQ in " + relative)
             enabled.add(args[0])
         for args, _ in calls(text, "HAL_NVIC_SetPriorityGrouping"):
@@ -355,15 +369,16 @@ def audit(root):
     require(required_sites <= observed_sites,
             "Required FromISR owner/API sites are missing: " + str(sorted(required_sites - observed_sites)))
 
-    # 接收任务已删除：CAN/UART 中断直接投递控制队列，只剩 IMU/控制/后台三个业务任务。
-    task_roles = ["IMU", "CONTROL", "TIMER", "BACKGROUND"]
+    # FD/UART 使用控制输入队列；经典 CAN 仍在 ISR 解析。Alive 是已有独立任务。
+    task_roles = ["IMU", "CONTROL", "TIMER", "ALIVE", "BACKGROUND"]
     task_values = [macros.macro("ROBOT_TASK_PRIORITY_" + role) for role in task_roles]
     task_max = macros.macro("configMAX_PRIORITIES")
     require(task_max > task_values[0] and all(a > b for a, b in zip(task_values, task_values[1:])) and task_values[-1] > 0,
-            "Task order must be IMU > CONTROL > TIMER > BACKGROUND > idle")
+            "Task order must be IMU > CONTROL > TIMER > ALIVE > BACKGROUND > idle")
     require(macros.macro("configTIMER_TASK_PRIORITY") == macros.macro("ROBOT_TASK_PRIORITY_TIMER"),
             "Timer service priority differs from the policy")
-    task_entries = {"Task_100us_Fast": "IMU", "Task_1ms_Control": "CONTROL", "Task_Background": "BACKGROUND"}
+    task_entries = {"Task_100us_Fast": "IMU", "Task_1ms_Control": "CONTROL",
+                    "Task_1ms_Alive": "ALIVE", "Task_Background": "BACKGROUND"}
     created = set()
     for relative, text in code.items():
         for args, _ in calls(text, "xTaskCreate"):

@@ -35,7 +35,8 @@ typedef struct
     uint32_t rx_cycle;                 /**< 本帧 ISR 采集的测试用 DWT 周期。 */
 #endif
     FDCAN_RxHeaderTypeDef header;
-    uint8_t data[8];
+    uint32_t generation;              /**< 每路 FD 接收代次；总线恢复后旧消息不再分发。 */
+    uint8_t data[64];                 /**< FD 整帧副本；经典 CAN 仍在 ISR 直接解析。 */
 } FreeRTOS_CAN_RxMsg_t;
 
 typedef struct

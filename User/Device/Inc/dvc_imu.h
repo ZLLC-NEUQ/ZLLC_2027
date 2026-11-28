@@ -19,6 +19,8 @@
 #include "alg_MahonyAHRS.h"
 #include "alg_pid.h"
 #include "ekf_tcm.h"
+#include "alg_VQF.h"
+#include "vqf_tcm.h"
 
 //----------------------------------------------------------------------------------------------------
 
@@ -71,7 +73,7 @@ class Class_IMU
 
     void Init(void);
     // 仅 IMU 任务调用解算和导出，控制任务调用应用快照和在线检测。
-    EKF_ITCM_CODE void TIM_Calculate_PeriodElapsedCallback(void);
+    IMU_ITCM_CODE void TIM_Calculate_PeriodElapsedCallback(void);
     void Export_Snapshot(Struct_IMU_Snapshot &snapshot) const;
     void Apply_Snapshot(const Struct_IMU_Snapshot &snapshot);
     void TIM1msMod50_Alive_PeriodElapsedCallback(void);
@@ -120,12 +122,17 @@ class Class_IMU
     float Pre_Published_Accel[3] = {0.0f, 0.0f, 0.0f};
     Enum_IMU_Status IMU_Status = IMU_Status_DISABLE;
 
-    EKF_ITCM_CODE void Get_Angle(void);
+    IMU_ITCM_CODE void Get_Angle(void);
     void TIM_Set_PWM(TIM_HandleTypeDef *tim_pwmHandle, uint8_t Channel, uint16_t value);
 
     // IMU 任务独占：解算工作区、原始数据和采样信息。
     INS_t INS;
     QEKF_INS_t QEKF_INS;
+#if IMU_USE_VQF
+    // 首个长期存在的 IMU 对象占用 DTCM，其余对象使用自己的后备对象。
+    Class_VQF IMU_VQF_Fallback;
+    Class_VQF *IMU_VQF = &IMU_VQF_Fallback;
+#endif
     IMU_Data_t BMI088_Raw_Data;
     uint32_t Producer_Sequence = 0;
     uint32_t Producer_Timestamp_ms = 0;
@@ -154,8 +161,8 @@ class Class_IMU
     uint8_t mag_update_flag = 0;
     uint8_t imu_start_flag = 0;    
 
-    EKF_ITCM_CODE void BodyFrameToEarthFrame(const float *vecBF, float *vecEF, float *q);
-    EKF_ITCM_CODE void EarthFrameToBodyFrame(const float *vecEF, float *vecBF, float *q);
+    IMU_ITCM_CODE void BodyFrameToEarthFrame(const float *vecBF, float *vecEF, float *q);
+    IMU_ITCM_CODE void EarthFrameToBodyFrame(const float *vecEF, float *vecBF, float *q);
 
     float invSqrt(float x);
 };

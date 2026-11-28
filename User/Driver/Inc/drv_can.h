@@ -68,6 +68,17 @@ struct Struct_CAN_Rx_Buffer
  */
 typedef void (*CAN_Call_Back)(Struct_CAN_Rx_Buffer *);
 
+/** @brief FD 完整帧；Length 是字节数，Header.DataLength 仍是 HAL 的 DLC 编码。 */
+struct Struct_CANFD_Rx_Buffer
+{
+    FDCAN_RxHeaderTypeDef Header;
+    uint8_t Data[64];
+    uint8_t Length;
+};
+
+/* 在 Control 任务中调用；参数只在回调期间有效，需要保留时复制内容。 */
+typedef void (*CANFD_Call_Back)(Struct_CANFD_Rx_Buffer *);
+
 /**
  * @brief CAN通信处理结构体
  *
@@ -77,6 +88,28 @@ struct Struct_CAN_Manage_Object
     FDCAN_HandleTypeDef *CAN_Handler;
     Struct_CAN_Rx_Buffer Rx_Buffer;
     CAN_Call_Back Callback_Function;
+    CANFD_Call_Back FD_Callback_Function;
+    volatile uint32_t FD_Rx_Generation; /**< 恢复或重新注册后，拒绝队列中旧代次的 FD 帧。 */
+};
+
+/** @brief 每路独立的通信诊断；计数自然回绕，不代表可靠交付或精确丢帧总数。 */
+struct Struct_CAN_IO_Diagnostics
+{
+    volatile uint32_t Tx_Classic_Accepted;
+    volatile uint32_t Tx_FD_Accepted;
+    volatile uint32_t Tx_Busy;
+    volatile uint32_t Tx_Invalid;
+    volatile uint32_t Tx_Errors;
+    volatile uint32_t Rx_Classic;
+    volatile uint32_t Rx_FD;
+    volatile uint32_t Rx_Invalid;
+    volatile uint32_t Rx_Read_Errors;
+    volatile uint32_t Rx_FIFO_Full_Events;
+    volatile uint32_t Rx_FIFO_Lost_Events;
+    volatile uint32_t Rx_Queue_Full;
+    volatile uint32_t Rx_Queue_Not_Ready;
+    volatile uint32_t Rx_No_Callback;
+    volatile uint32_t Rx_Stale;
 };
 
 /** @brief 三路 CAN 独立的错误恢复统计，可直接在 Watch 中查看。 */
@@ -106,6 +139,10 @@ extern Struct_CAN_Manage_Object CAN3_Manage_Object;
 extern Struct_CAN_Recovery_Diagnostics CAN1_Recovery_Diagnostics;
 extern Struct_CAN_Recovery_Diagnostics CAN2_Recovery_Diagnostics;
 extern Struct_CAN_Recovery_Diagnostics CAN3_Recovery_Diagnostics;
+
+extern Struct_CAN_IO_Diagnostics CAN1_IO_Diagnostics;
+extern Struct_CAN_IO_Diagnostics CAN2_IO_Diagnostics;
+extern Struct_CAN_IO_Diagnostics CAN3_IO_Diagnostics;
 
 extern uint8_t CAN1_0x1ff_Tx_Data[];
 extern uint8_t CAN1_0x1fe_Tx_Data[];
@@ -197,9 +234,19 @@ extern uint8_t CAN3_0x148_Tx_Data[8];
 
 void CAN_Init(FDCAN_HandleTypeDef *hcan, CAN_Call_Back Callback_Function);
 
+/* 在 Task_Init 中、调度器启动前注册；NULL 表示不接收 FD，原 CAN_Init 无需修改。 */
+HAL_StatusTypeDef CAN_Register_FD_Callback(FDCAN_HandleTypeDef *hcan, CANFD_Call_Back Callback_Function);
+
+/* 框架内部入口：仅由 Control 任务分发队列副本，普通 CAN 不经过此入口。 */
+void CANFD_Dispatch_Rx(uint8_t CAN_Instance, const FDCAN_RxHeaderTypeDef *Header,
+                       const uint8_t *Data, uint32_t Generation);
+
 /* 由 1ms 控制任务调用；中断只记录错误并请求恢复。 */
 void CAN_Error_Service(void);
 
+/* 任务/启动上下文：0..8 字节发经典帧，9..64 发 FD，非标准长度向上补零。
+ * 1Mbps/BRS_OFF；标准 ID <= 0x7ff。Length>0 时 Data 必须指向足够大的数组。
+ * HAL_OK 仅表示提交外设；忙时 HAL_BUSY，不等待、不自动重发。 */
 uint8_t CAN_Send_Data(FDCAN_HandleTypeDef *hcan, uint16_t ID, uint8_t *Data, uint16_t Length);
 
 void TIM_CAN_PeriodElapsedCallback();

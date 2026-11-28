@@ -100,23 +100,11 @@ BaseType_t FreeRTOS_SubmitUSBFromISR(const uint8_t *data, uint32_t length,
 
 static void FreeRTOS_DispatchCAN(FreeRTOS_CAN_RxMsg_t &message)
 {
-    // Struct_CAN_Manage_Object *object = NULL;
-    // switch (message.can_instance)
-    // {
-    //     case 1: object = &CAN1_Manage_Object; break;
-    //     case 2: object = &CAN2_Manage_Object; break;
-    //     case 3: object = &CAN3_Manage_Object; break;
-    //     default: break;
-    // }
-    // if ((object != NULL) && (object->Callback_Function != NULL))
-    // {
-    //     ulCurrentRxCycle = message.rx_cycle;
-    //     /* CAN 管理接收副本仅由控制任务写；ISR 使用自己的队列消息。 */
-    //     object->Rx_Buffer.Header = message.header;
-    //     memcpy(object->Rx_Buffer.Data, message.data, sizeof(message.data));
-    //     object->Rx_Buffer.Rx_Cycle = message.rx_cycle;
-    //     object->Callback_Function(&object->Rx_Buffer);
-    // }
+    /* 经典帧不入队，避免电机反馈重复解析或改变原有接收时序。 */
+#if PERFORMANCE_TEST_ENABLE
+    ulCurrentRxCycle = message.rx_cycle;
+#endif
+    CANFD_Dispatch_Rx(message.can_instance, &message.header, message.data, message.generation);
 }
 
 static void FreeRTOS_DispatchUART(FreeRTOS_UART_RxMsg_t &message)
@@ -155,7 +143,7 @@ static void FreeRTOS_ProcessControlInputs(void)
         switch (message.type)
         {
             case FREERTOS_CONTROL_INPUT_CAN:
-                FreeRTOS_DispatchCAN(message.payload.can);  //延迟过大,实际上是直接在ISR中解析了,这里不再解析
+                FreeRTOS_DispatchCAN(message.payload.can);  // 仅分发 FD；经典 CAN 在 ISR 解析
                 break;
             case FREERTOS_CONTROL_INPUT_UART:
                 FreeRTOS_DispatchUART(message.payload.uart);

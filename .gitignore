@@ -34,3 +34,4 @@ JLinkLog.txt
 *.uvopt
  # 忽略 VSCode 配置文件夹
 .vscode/
+Tools/

@@ -12,6 +12,14 @@
 #include "dvc_imu.h"
 #include "ekf_tcm.h"
 #include "dvc_performance.h"
+#if IMU_USE_VQF && VQF_USE_TCM
+#include <new>
+// 原始零初始化存储由既有启动代码清零；Init 中原位构造，无堆分配。
+// 只迁入算法对象，不将 BMI088/SPI/DMA 缓冲及整个 chariot 放入 DTCM。
+static VQF_DTCM_DATA unsigned char VQF_TCM_Storage[sizeof(Class_VQF)];
+static const Class_IMU *VQF_TCM_Owner = NULL;
+static_assert(alignof(Class_VQF) <= 8, "VQF DTCM storage alignment");
+#endif
 
 float offsety = 0.0022f;
 void Class_IMU::Init()
@@ -26,6 +34,8 @@ void Class_IMU::Init()
     Producer_Sequence = 0;
     Producer_Timestamp_ms = 0;
     imu_start_flag = 0;
+    INS = {};
+    INS.q[0] = 1.0f;
 
     // 初始化BMI088传感器，计算零漂 并检查初始化是否成功
     IMU_BMI088.init(&hspi2,&BMI088_Raw_Data);
@@ -38,8 +48,31 @@ void Class_IMU::Init()
     // 初始化MahonyAHRS算法，并传入初始四元数
     IMU_MahonyAHRS.init(INS_Quat);
  
-    //EKF初始化                         第三个加速度参数加大，减小运动过程中的影响    过于不相信加速度导致静止到目标收敛慢，看起来在飘
+#if IMU_USE_VQF
+#if VQF_USE_TCM
+    // Init 仅在调度器启动前调用。重复 Init 不重新构造已绑定的对象。
+    if (VQF_TCM_Owner == NULL)
+    {
+        IMU_VQF = new (VQF_TCM_Storage) Class_VQF;
+        VQF_TCM_Owner = this;
+    }
+    else if (VQF_TCM_Owner == this)
+    {
+        IMU_VQF = reinterpret_cast<Class_VQF *>(VQF_TCM_Storage);
+    }
+#endif
+    // 加速度低通时间常数 3 s；仅启用静止零偏估计。
+    Struct_VQF_Parameter parameter;
+    parameter.Tau_Acc = 3.0f;
+    parameter.Motion_Bias_Est_Enabled = false;
+    parameter.Rest_Bias_Est_Enabled = true;
+    if (!IMU_VQF->Init(parameter, 0.001f))
+        return;
+    IMU_VQF->Get_Quaternion(INS.q);
+#else
+    // 原 EKF 参数及动态周期接口保留。
     IMU_QuaternionEKF_Init(10, 0.001, 10000000, 0.9996, 0.05, offsety, &QEKF_INS);
+#endif
 
     INS.AccelLPF = 0.05f;
 
@@ -47,11 +80,12 @@ void Class_IMU::Init()
     PID_IMU_Tempture.Init(200, 300, 0, 0.0, 250, 500);
     HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
 
+    // 不把传感器初始化/延时计入首帧运动加速度滤波周期。
+    INS_DWT_Count = DWT->CYCCNT;
+
 }
 
-static float tmp_gravity_b[3];
-
-EKF_ITCM_CODE void Class_IMU::TIM_Calculate_PeriodElapsedCallback(void)
+IMU_ITCM_CODE void Class_IMU::TIM_Calculate_PeriodElapsedCallback(void)
 {
     static uint8_t Tempture_Cnt_mod50 = 0;
     Tempture_Cnt_mod50++;
@@ -60,19 +94,23 @@ EKF_ITCM_CODE void Class_IMU::TIM_Calculate_PeriodElapsedCallback(void)
 
     IMU_BMI088.BMI088_Read(&BMI088_Raw_Data);
 
-    INS.Accel[0] = BMI088_Raw_Data.Accel[0];
-    INS.Accel[1] = BMI088_Raw_Data.Accel[1];
-    INS.Accel[2] = BMI088_Raw_Data.Accel[2];
-    INS.Gyro[0] = BMI088_Raw_Data.Gyro[0];
-    INS.Gyro[1] = BMI088_Raw_Data.Gyro[1];
-    INS.Gyro[2] = BMI088_Raw_Data.Gyro[2];
-
+#if IMU_USE_VQF
+    // 系数固定为 1 ms；DWT 实测间隔仍用于原有运动加速度滤波及调试。
+    const bool updated = IMU_VQF->Update(BMI088_Raw_Data.Gyro, BMI088_Raw_Data.Accel);
+    if (!updated)
+        return; // 无效输入不发布新的成功样本序号。
+    IMU_VQF->Get_Quaternion(INS.q);
+#else
     PERF_START(EKF_Timing);
     // 核心函数,EKF更新四元数
-    IMU_QuaternionEKF_Update(INS.Gyro[0], INS.Gyro[1], INS.Gyro[2], INS.Accel[0], INS.Accel[1], INS.Accel[2], INS_DWT_Dt, &QEKF_INS);
+    IMU_QuaternionEKF_Update(BMI088_Raw_Data.Gyro[0], BMI088_Raw_Data.Gyro[1], BMI088_Raw_Data.Gyro[2],
+                             BMI088_Raw_Data.Accel[0], BMI088_Raw_Data.Accel[1], BMI088_Raw_Data.Accel[2], INS_DWT_Dt, &QEKF_INS);
     PERF_STOP(EKF_Timing);
 
     memcpy(INS.q, QEKF_INS.q, sizeof(QEKF_INS.q));
+#endif
+    memcpy(INS.Accel, BMI088_Raw_Data.Accel, sizeof(INS.Accel));
+    memcpy(INS.Gyro, BMI088_Raw_Data.Gyro, sizeof(INS.Gyro));
 
     // 机体系基向量转换到导航坐标系，本例选取惯性系为导航系
     BodyFrameToEarthFrame(X_b, INS.xn, INS.q);
@@ -81,6 +119,7 @@ EKF_ITCM_CODE void Class_IMU::TIM_Calculate_PeriodElapsedCallback(void)
 
     // 将重力从导航坐标系n转换到机体系b,随后根据加速度计数据计算运动加速度
     
+    float tmp_gravity_b[3];
     EarthFrameToBodyFrame(Gravity, tmp_gravity_b, INS.q);
     for (uint8_t i = 0; i < 3; i++) // 同样过一个低通滤波
     {
@@ -140,15 +179,24 @@ void Class_IMU::TIM1msMod50_Alive_PeriodElapsedCallback(void)
 
 float accel = 0.00035f;
 uint64_t cnt =0;
-EKF_ITCM_CODE void Class_IMU::Get_Angle()
+IMU_ITCM_CODE void Class_IMU::Get_Angle()
 {
     cnt ++;
     // 获取最终数据
     //INS.Yaw = QEKF_INS.Yaw - accel * cnt;
+#if IMU_USE_VQF
+    INS.Yaw = IMU_VQF->Get_Angle_Yaw();
+    INS.Pitch = IMU_VQF->Get_Angle_Pitch();
+    INS.Roll = IMU_VQF->Get_Angle_Roll();
+    INS.YawTotalAngle = IMU_VQF->Get_Yaw_Total_Angle();
+#else
     INS.Yaw = QEKF_INS.Yaw;
     INS.Pitch = QEKF_INS.Pitch;
     INS.Roll = QEKF_INS.Roll;
     INS.YawTotalAngle = QEKF_INS.YawTotalAngle;
+#endif
+
+    memcpy(INS_Quat, INS.q, sizeof(INS_Quat));
 
     INS_Rad[0] = atan2f(2.0f*(INS_Quat[0]*INS_Quat[3]+INS_Quat[1]*INS_Quat[2]), 2.0f*(INS_Quat[0]*INS_Quat[0]+INS_Quat[1]*INS_Quat[1])-1.0f);
     INS_Rad[1] = asinf(-2.0f*(INS_Quat[1]*INS_Quat[3]-INS_Quat[0]*INS_Quat[2]));
@@ -287,7 +335,7 @@ Enum_IMU_Status Class_IMU::Get_IMU_Status(void)
  * @param[2]       vector in EarthFrame
  * @param[3]       quaternion
  */
-EKF_ITCM_CODE void Class_IMU::BodyFrameToEarthFrame(const float *vecBF, float *vecEF, float *q)
+IMU_ITCM_CODE void Class_IMU::BodyFrameToEarthFrame(const float *vecBF, float *vecEF, float *q)
 {
     vecEF[0] = 2.0f * ((0.5f - q[2] * q[2] - q[3] * q[3]) * vecBF[0] +
                        (q[1] * q[2] - q[0] * q[3]) * vecBF[1] +
@@ -308,7 +356,7 @@ EKF_ITCM_CODE void Class_IMU::BodyFrameToEarthFrame(const float *vecBF, float *v
  * @param[2]       vector in BodyFrame
  * @param[3]       quaternion
  */
-EKF_ITCM_CODE void Class_IMU::EarthFrameToBodyFrame(const float *vecEF, float *vecBF, float *q)
+IMU_ITCM_CODE void Class_IMU::EarthFrameToBodyFrame(const float *vecEF, float *vecBF, float *q)
 {
     vecBF[0] = 2.0f * ((0.5f - q[2] * q[2] - q[3] * q[3]) * vecEF[0] +
                        (q[1] * q[2] + q[0] * q[3]) * vecEF[1] +
