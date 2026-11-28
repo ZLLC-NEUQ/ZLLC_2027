@@ -1,11 +1,11 @@
 /**
  * @file crt_chassis.cpp
- * @author HGCSJ
+ * @author cjw
  * @brief 底盘
- * @version V1.1
- * @date 2026-10-30 27赛季定稿
+ * @version 0.1
+ * @date 2025-07-1 0.1 26赛季定稿
  *
- * @copyright ZLLC 2027
+ * @copyright ZLLC 2026
  *
  */
 
@@ -18,10 +18,7 @@
 /* Includes ------------------------------------------------------------------*/
 
 #include "crt_chassis.h"
-#include "dvc_performance.h"
-#include "buzzer.h"
-#include "drv_math.h"
-#include "config.h"
+
 /* Private macros ------------------------------------------------------------*/
 
 /* Private types -------------------------------------------------------------*/
@@ -33,39 +30,40 @@
 /* Function prototypes -------------------------------------------------------*/
 
 float Chassis_Speed_Kalman_F[36] = {1.0f, 0.0f, 0.002f, 0.0f, 0.0f, 0.0f,
-                                    0.0f, 1.0f, 0.0f, 0.002f, 0.0f, 0.0f,
-                                    0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-                                    0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-                                    0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                    0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+                              0.0f, 1.0f, 0.0f, 0.002f, 0.0f, 0.0f,
+                              0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+                              0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                              0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                              0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
 
 float Chassis_Speed_Kalman_H[36] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                    0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                    0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-                                    0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-                                    0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                    0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f};
+                              0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                              0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+                              0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                              0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                              0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f};
 
 float Chassis_Speed_Kalman_P[36] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                    0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                    0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
-                                    0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-                                    0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                                    0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
-// 过程模型噪声
-float Chassis_Speed_Kalman_Q[36] = {0.01f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,   // Vx
-                                    0.0f, 0.01f, 0.0f, 0.0f, 0.0f, 0.0f,   // Vy
-                                    0.0f, 0.0f, 0.1f, 0.0f, 0.0f, 0.0f,    // ax
-                                    0.0f, 0.0f, 0.0f, 0.1f, 0.0f, 0.0f,    // ay
-                                    0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,    // w
-                                    0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.001f}; // b(陀螺仪漂移)
-// 观测过程噪声
-float Chassis_Speed_Kalman_R[36] = {15.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, // Vx
-                                    0.0f, 15.0f, 0.0f, 0.0f, 0.0f, 0.0f, // Vy
-                                    0.0f, 0.0f, 15.0f, 0.0f, 0.0f, 0.0f, // ax
-                                    0.0f, 0.0f, 0.0f, 15.0f, 0.0f, 0.0f, // ay
-                                    0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f,  // 逆解算出的角速度
-                                    0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.3f}; // 陀螺仪的角速度
+                              0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                              0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+                              0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                              0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                              0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+//过程模型噪声
+float Chassis_Speed_Kalman_Q[36] = {0.01f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,            //Vx
+                              0.0f, 0.01f, 0.0f, 0.0f, 0.0f, 0.0f,            //Vy
+                              0.0f, 0.0f, 0.1f, 0.0f, 0.0f, 0.0f,            //ax
+                              0.0f, 0.0f, 0.0f, 0.1f, 0.0f, 0.0f,            //ay
+                              0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,            //w
+                              0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.001f};           //b(陀螺仪漂移)
+//观测过程噪声                              
+float Chassis_Speed_Kalman_R[36] = {15.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,               //Vx
+                              0.0f, 15.0f, 0.0f, 0.0f, 0.0f, 0.0f,               //Vy
+                              0.0f, 0.0f, 15.0f, 0.0f, 0.0f, 0.0f,               //ax
+                              0.0f, 0.0f, 0.0f, 15.0f, 0.0f, 0.0f,               //ay
+                              0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f,               //逆解算出的角速度
+                              0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.3f};              //陀螺仪的角速度
+
 
 /**
  * @brief 底盘初始化
@@ -73,74 +71,51 @@ float Chassis_Speed_Kalman_R[36] = {15.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, // Vx
  * @param __Chassis_Control_Type 底盘控制方式, 默认舵轮方式
  * @param __Speed 底盘速度限制最大值
  */
-void Class_Steering_Wheel_Chassis::Init(float __Velocity_X_Max, float __Velocity_Y_Max, float __Omega_Max, float __Steer_Power_Ratio)
+void Class_Tricycle_Chassis::Init(float __Velocity_X_Max, float __Velocity_Y_Max, float __Omega_Max, float __Steer_Power_Ratio)
 {
-    //Power_Limit.Init(400,3500);
-    Supercap.Init(&hfdcan3,100.f);
+    Power_Limit.Init(0,0);
+    Supercap.Init(&hfdcan2,200.f);
     
     Velocity_X_Max = __Velocity_X_Max;
     Velocity_Y_Max = __Velocity_Y_Max;
     Omega_Max = __Omega_Max;
     Steer_Power_Ratio = __Steer_Power_Ratio;
 
-    //斜坡函数加减速速度X  控制周期1ms
-    Slope_Velocity_X.Init(0.05f,0.05f);
+        //斜坡函数加减速速度X  控制周期1ms
+    Slope_Velocity_X.Init(0.0070f,0.003f);
     //斜坡函数加减速速度Y  控制周期1ms
-    Slope_Velocity_Y.Init(0.05f,0.05f);
+    Slope_Velocity_Y.Init(0.0070f,0.003f);
     //斜坡函数加减速角速度
     Slope_Omega.Init(0.05f, 0.05f);
 
     //电机PID批量初始化
-    for (int i = 0; i < 4; i++) 
+    for (int i = 0; i < 4; i++)
     {
-        Motor_Wheel[i].PID_Omega.Init(0.0f, 0.0f, 0.0f, 0.0f, Motor_Wheel[i].Get_Output_Max(), Motor_Wheel[i].Get_Output_Max());
+        Motor_Wheel[i].PID_Omega.Init(1000.0f, 0.0f, 0.0f, 0.0f, Motor_Wheel[i].Get_Output_Max(), Motor_Wheel[i].Get_Output_Max());
     }
 
-    #ifdef AGV
-    //轮向电机ID初始化
-    Motor_Wheel[0].Init(&hfdcan1, DJI_Motor_ID_0x201, DJI_Motor_Control_Method_OPENLOOP, M3508_REDUCTION_RATIO);
-    Motor_Wheel[1].Init(&hfdcan1, DJI_Motor_ID_0x203, DJI_Motor_Control_Method_OPENLOOP, M3508_REDUCTION_RATIO);
-    Motor_Wheel[2].Init(&hfdcan1, DJI_Motor_ID_0x205, DJI_Motor_Control_Method_OPENLOOP, M3508_REDUCTION_RATIO);
-    Motor_Wheel[3].Init(&hfdcan1, DJI_Motor_ID_0x207, DJI_Motor_Control_Method_OPENLOOP, M3508_REDUCTION_RATIO);
-    
-    //舵向电机PID初始化
+    Motor_Wheel[0].Init(&hfdcan1, DJI_Motor_ID_0x201, DJI_Motor_Control_Method_OMEGA, 15.76f);
+    Motor_Wheel[1].Init(&hfdcan1, DJI_Motor_ID_0x202, DJI_Motor_Control_Method_OMEGA, 15.76f);
+    Motor_Wheel[2].Init(&hfdcan1, DJI_Motor_ID_0x203, DJI_Motor_Control_Method_OMEGA, 15.76f);
+    Motor_Wheel[3].Init(&hfdcan1, DJI_Motor_ID_0x204, DJI_Motor_Control_Method_OMEGA, 15.76f);
 
-    Motor_Steer[0].PID_Angle.Init(20.0f, 0.0f, 0.0f, 0.0f, 15.0f, 15.0f);
-    Motor_Steer[0].PID_Omega.Init(750.0f,0.0f, 0.0f, 0.0f, 8000, Motor_Steer[0].Get_Output_Max());
-    
-    Motor_Steer[1].PID_Angle.Init(20.0f, 0.0f, 0.0f, 0.0f, 15.0f, 15.0f);
-    Motor_Steer[1].PID_Omega.Init(750.0f, 0.0f, 0.0f, 0.0f, 8000, Motor_Steer[1].Get_Output_Max());
+    // // 底盘速度xPID, 输出摩擦力
+    // PID_Velocity_X.Init(600.0f, 0.0f, 0.0f, 0.0f, 150.0f, 3000.0f, 0.002f);
 
-    Motor_Steer[2].PID_Angle.Init(20.0f, 0.0f, 0.0f, 0.0f, 15.0f, 15.0f);
-    Motor_Steer[2].PID_Omega.Init(750.0f, 0.0f, 0.0f, 0.0f, 8000, Motor_Steer[2].Get_Output_Max());
+    // // 底盘速度yPID, 输出摩擦力
+    // PID_Velocity_Y.Init(600.0f, 0.0f, 0.0f, 0.0f, 150.0f, 3000.0f, 0.002f);
 
-    Motor_Steer[3].PID_Angle.Init(20.0f, 0.0f, 0.0f, 0.0f, 15.0f, 15.0f);
-    Motor_Steer[3].PID_Omega.Init(750.0f, 0.0f, 0.0f, 0.0f, 8000, Motor_Steer[3].Get_Output_Max());
-
-    //舵向电机ID初始化
-    Motor_Steer[0].Init(&hfdcan1, DJI_Motor_ID_0x202, DJI_Motor_Control_Method_AGV_MODE, 8.0f);
-    Motor_Steer[1].Init(&hfdcan1, DJI_Motor_ID_0x204, DJI_Motor_Control_Method_AGV_MODE, 8.0f);
-    Motor_Steer[2].Init(&hfdcan1, DJI_Motor_ID_0x206, DJI_Motor_Control_Method_AGV_MODE, 8.0f);
-    Motor_Steer[3].Init(&hfdcan1, DJI_Motor_ID_0x208, DJI_Motor_Control_Method_AGV_MODE, 8.0f);
-    //舵向电机零点位置初始化
-    // Motor_Steer[0].Set_Zero_Position(-0.07f);
-    // Motor_Steer[1].Set_Zero_Position(0.88f);
-    // Motor_Steer[2].Set_Zero_Position(2.42f);
-    // Motor_Steer[3].Set_Zero_Position(-1.13f);
-    Motor_Steer[0].Set_Zero_Position(-2.99f);
-    Motor_Steer[1].Set_Zero_Position(-1.20f);
-    Motor_Steer[2].Set_Zero_Position(-2.84f);
-    Motor_Steer[3].Set_Zero_Position(-0.36f);
-    #endif
+    // // 底盘角速度PID, 输出扭矩
+    // PID_Omega.Init(25.0f, 0.0f, 0.0f, 0.0f, 10.0f, 400.0f, 0.002f);
 
     // 底盘速度xPID, 输出摩擦力
-    PID_Velocity_X.Init(30.0f, 0.0f, 0.0f, 0.0f, 150.0f, 500.0f, 0.002f);
+    PID_Velocity_X.Init(50.0f, 0.0f, 0.0f, 0.0f, 150.0f, 500.0f, 0.002f);
 
     // 底盘速度yPID, 输出摩擦力
-    PID_Velocity_Y.Init(30.0f, 0.0f, 0.0f, 0.0f, 150.0f, 500.0f, 0.002f);
+    PID_Velocity_Y.Init(50.0f, 0.0f, 0.0f, 0.0f, 150.0f, 500.0f, 0.002f);
 
     // 底盘角速度PID, 输出扭矩
-    PID_Omega.Init(7.0f, 0.0f, 0.0f, 0.0f, 10.0f, 12.0f, 0.002f);
+    PID_Omega.Init(3.0f, 0.0f, 0.0f, 0.0f, 100.0f, 100.0f, 0.002f);
 
     Kalman_Filter_Init(&Chassis_Speed_Kalman, 6, 0, 6);                               
 
@@ -154,202 +129,131 @@ void Class_Steering_Wheel_Chassis::Init(float __Velocity_X_Max, float __Velocity
     Chassis_Control_Type = Chassis_Control_Type_DISABLE;
 }
 
-float dsb;
+
 /**
  * @brief 速度解算
  *
  */
-float True_Vx[4], True_Vy[4], True_Target_Angle_Radian[4];
 float car_V,car_yaw;//车体总体朝向与速度
-void Class_Steering_Wheel_Chassis::Speed_Resolution()
-{
-    if (Motor_Steer[0].Get_MA600_Status() == MA600_Status_DISABLE || Motor_Steer[1].Get_MA600_Status() == MA600_Status_DISABLE ||
-        Motor_Steer[2].Get_MA600_Status() == MA600_Status_DISABLE || Motor_Steer[3].Get_MA600_Status() == MA600_Status_DISABLE)
-    {
-        buzzer_setTask(&buzzer, BUZZER_DJI_STARTUP_PRIORITY);
-        for (uint8_t i = 0; i < 4; i++)
-        {
-            Motor_Wheel[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_OPENLOOP);
-            Motor_Wheel[i].PID_Omega.Set_Integral_Error(0.0f);
-            Motor_Wheel[i].Set_Out(0.0f);
+float see1,see2,see3;
 
-            Motor_Steer[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_OPENLOOP);
-            Motor_Steer[i].PID_Omega.Set_Integral_Error(0.0f);
-            Motor_Steer[i].PID_Angle.Set_Integral_Error(0.0f);
-            Motor_Steer[i].Set_Out(0.0f);
-        }
-        return;
-    }
-// else{
-//     buzzer_setTask(&buzzer, BUZZER_FREE_PRIORITY);
-// }
-#ifdef AGV
+void Class_Tricycle_Chassis::Speed_Resolution()
+{
+    #ifdef OMNI_WHEEL
     switch (Chassis_Control_Type)
     {
-    case (Chassis_Control_Type_DISABLE):
-    {
-        for (int i = 0; i < 4; i++)
+        case (Chassis_Control_Type_DISABLE):
         {
-            Motor_Wheel[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_OPENLOOP);
-            Motor_Wheel[i].PID_Omega.Set_Integral_Error(0.0f);
-            Motor_Wheel[i].Set_Out(0.0f);
+            //底盘失能 轮组无力
+            for (int i = 0; i < 4; i++)
+            {
+                Motor_Wheel[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_OMEGA);
+                Motor_Wheel[i].PID_Angle.Set_Integral_Error(0.0f);
+                Motor_Wheel[i].Set_Target_Omega_Radian(0.0f);
+                Motor_Wheel[i].Set_Out(0.0f);
+                Motor_Wheel[i].TIM_PID_PeriodElapsedCallback();
+            }            
+        }
+        break;
+        case (Chassis_Control_Type_FLLOW) :
+        {
+            // 底盘四电机模式配置
+            for (int i = 0; i < 4; i++)
+            {
+                Motor_Wheel[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_OMEGA);
+            }
+            //底盘限速
+            if (Velocity_X_Max != 0)
+            {
+                Math_Constrain(&Target_Velocity_X, -Velocity_X_Max, Velocity_X_Max);
+            }
+            if (Velocity_Y_Max != 0)
+            {
+                Math_Constrain(&Target_Velocity_Y, -Velocity_Y_Max, Velocity_Y_Max);
+            }
+            if (Omega_Max != 0)
+            {
+                Math_Constrain(&Omega_Max, -Omega_Max, Omega_Max);
+            }
 
-            Motor_Steer[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_OPENLOOP);
-            Motor_Steer[i].PID_Omega.Set_Integral_Error(0.0f);
-            Motor_Steer[i].PID_Angle.Set_Integral_Error(0.0f);
-            Motor_Steer[i].Set_Out(0.0f);
+            // 速度换算，正运动学分解
+            float motor1_temp_linear_vel = Get_Target_Velocity_Y() - Get_Target_Velocity_X() + Get_Target_Omega() * (HALF_WIDTH + HALF_LENGTH);
+            float motor2_temp_linear_vel = Get_Target_Velocity_Y() + Get_Target_Velocity_X() - Get_Target_Omega() * (HALF_WIDTH + HALF_LENGTH);
+            float motor3_temp_linear_vel = Get_Target_Velocity_Y() + Get_Target_Velocity_X() + Get_Target_Omega() * (HALF_WIDTH + HALF_LENGTH);
+            float motor4_temp_linear_vel = Get_Target_Velocity_Y() - Get_Target_Velocity_X() - Get_Target_Omega() * (HALF_WIDTH + HALF_LENGTH);
+
+            // 斜坡函数
+            // float motor1_temp_linear_vel = Slope_Velocity_Y.Get_Out() - Slope_Velocity_X.Get_Out() + Slope_Omega.Get_Out() * (HALF_WIDTH + HALF_LENGTH);
+            // float motor2_temp_linear_vel = Slope_Velocity_Y.Get_Out() + Slope_Velocity_X.Get_Out() - Slope_Omega.Get_Out() * (HALF_WIDTH + HALF_LENGTH);
+            // float motor3_temp_linear_vel = Slope_Velocity_Y.Get_Out() + Slope_Velocity_X.Get_Out() + Slope_Omega.Get_Out() * (HALF_WIDTH + HALF_LENGTH);
+            // float motor4_temp_linear_vel = Slope_Velocity_Y.Get_Out() - Slope_Velocity_X.Get_Out() - Slope_Omega.Get_Out() * (HALF_WIDTH + HALF_LENGTH);
+
+            // 线速度 cm/s  转角速度  RAD
+            float motor1_temp_rad = motor1_temp_linear_vel * VEL2RPM * RPM2RAD;
+            float motor2_temp_rad = motor2_temp_linear_vel * VEL2RPM * RPM2RAD;
+            float motor3_temp_rad = motor3_temp_linear_vel * VEL2RPM * RPM2RAD;
+            float motor4_temp_rad = motor4_temp_linear_vel * VEL2RPM * RPM2RAD;
+            // 角速度*减速比  设定目标
+            Motor_Wheel[0].Set_Target_Omega_Radian(motor2_temp_rad * M3508_REDUCTION_RATIO);
+            Motor_Wheel[1].Set_Target_Omega_Radian(-motor1_temp_rad * M3508_REDUCTION_RATIO);
+            Motor_Wheel[2].Set_Target_Omega_Radian(-motor3_temp_rad * M3508_REDUCTION_RATIO);
+            Motor_Wheel[3].Set_Target_Omega_Radian(motor4_temp_rad * M3508_REDUCTION_RATIO);
+
+            for(int i=0;i<4;i++)
+            {
+                Motor_Wheel[i].TIM_PID_PeriodElapsedCallback();
+            }
+        }
+        break;
+        case (Chassis_Control_Type_SPIN) :
+        {
+            // 底盘四电机模式配置
+            for (int i = 0; i < 4; i++)
+            {
+                Motor_Wheel[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_OMEGA);
+            }
+            //底盘限速
+            if (Velocity_X_Max != 0)
+            {
+                Math_Constrain(&Target_Velocity_X, -Velocity_X_Max, Velocity_X_Max);
+            }
+            if (Velocity_Y_Max != 0)
+            {
+                Math_Constrain(&Target_Velocity_Y, -Velocity_Y_Max, Velocity_Y_Max);
+            }
+            if (Omega_Max != 0)
+            {
+                Math_Constrain(&Omega_Max, -Omega_Max, Omega_Max);
+            }
+
+            // 速度换算，正运动学分解
+            float motor1_temp_linear_vel = Get_Target_Velocity_Y() - Get_Target_Velocity_X() + Get_Target_Omega() * (HALF_WIDTH + HALF_LENGTH);
+            float motor2_temp_linear_vel = Get_Target_Velocity_Y() + Get_Target_Velocity_X() - Get_Target_Omega() * (HALF_WIDTH + HALF_LENGTH);
+            float motor3_temp_linear_vel = Get_Target_Velocity_Y() + Get_Target_Velocity_X() + Get_Target_Omega() * (HALF_WIDTH + HALF_LENGTH);
+            float motor4_temp_linear_vel = Get_Target_Velocity_Y() - Get_Target_Velocity_X() - Get_Target_Omega() * (HALF_WIDTH + HALF_LENGTH);
+
+            // 线速度 cm/s  转角速度  RAD
+            float motor1_temp_rad = motor1_temp_linear_vel * VEL2RPM * RPM2RAD;
+            float motor2_temp_rad = motor2_temp_linear_vel * VEL2RPM * RPM2RAD;
+            float motor3_temp_rad = motor3_temp_linear_vel * VEL2RPM * RPM2RAD;
+            float motor4_temp_rad = motor4_temp_linear_vel * VEL2RPM * RPM2RAD;
+            // 角速度*减速比  设定目标
+            Motor_Wheel[0].Set_Target_Omega_Radian(motor2_temp_rad * M3508_REDUCTION_RATIO);
+            Motor_Wheel[1].Set_Target_Omega_Radian(-motor1_temp_rad * M3508_REDUCTION_RATIO);
+            Motor_Wheel[2].Set_Target_Omega_Radian(-motor3_temp_rad * M3508_REDUCTION_RATIO);
+            Motor_Wheel[3].Set_Target_Omega_Radian(motor4_temp_rad * M3508_REDUCTION_RATIO);
+
+            for(int i=0;i<4;i++)
+            {
+                Motor_Wheel[i].TIM_PID_PeriodElapsedCallback();
+            }
         }
         break;
     }
-    // 舵轮运动学逆解
-    case (Chassis_Control_Type_FLLOW):
-    case (Chassis_Control_Type_SPIN_Positive):
-    case (Chassis_Control_Type_Drive):
-    {
-        // 轮组自锁，每个小轮坐标系都符合右手系
-        static uint32_t Lock_Time = 0;
-        static uint8_t Lock_Flag = 0;
-        float delta_Angle = 0.0f, Transform_Radian = 0.0f; // 用于优化处理的变量
-        if (fabs(Target_Velocity_X) < 0.01 && fabs(Target_Velocity_Y) < 0.01 && fabs(Target_Omega) < 0.01)
-        {
-            Lock_Time++;
-            if (Lock_Time > 500)
-                Lock_Flag = 1;
-            if (Lock_Flag)
-            {
-                for (int i = 0; i < 4; i++)
-                {
-                    Motor_Wheel[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_OMEGA);
-                    Motor_Steer[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_AGV_MODE); // 舵轮控制模式
-
-                    Motor_Wheel[i].Set_Target_Omega_Radian(0.0f);
-                }
-
-                Motor_Steer[0].Set_Target_Radian(-PI / 4.0f);
-                Motor_Steer[1].Set_Target_Radian(PI / 4.0f);
-                Motor_Steer[2].Set_Target_Radian(-PI / 4.0f);
-                Motor_Steer[3].Set_Target_Radian(PI / 4.0f);
-                for (int i = 0; i < 4; i++)
-                {
-                    Transform_Radian = Motor_Steer[i].Get_Now_Zero_Offset_Radian();
-
-                    // 优劣弧处理
-                    if ((i % 2) == 0)
-                    {
-                        delta_Angle = -PI / 4.0f - Transform_Radian;
-                    }
-                    else
-                    {
-                        delta_Angle = PI / 4.0f - Transform_Radian;
-                    }
-
-                    delta_Angle = Normalize_Angle_Radian_PI_to_PI(delta_Angle); // 将角度限制在-PI到PI之间
-
-                    if (delta_Angle > PI / 2.0f)
-                    {
-                        delta_Angle = delta_Angle - PI;
-                    }
-                    else if (delta_Angle < -PI / 2.0f)
-                    {
-                        delta_Angle = delta_Angle + PI;
-                    }
-                    Motor_Steer[i].Set_Target_Radian(Transform_Radian + delta_Angle);
-                    Motor_Steer[i].Set_Transform_Radian(Transform_Radian);
-                    // Motor_Steer[i].Set_Out(0.0f);
-                    // Motor_Wheel[i].Set_Out(0.0f);
-                    Motor_Steer[i].TIM_PID_PeriodElapsedCallback();
-                    Motor_Wheel[i].TIM_PID_PeriodElapsedCallback();
-                }
-                break;
-            }
-        }
-        else
-        {
-            Lock_Time = 0;
-        }
-
-        if (Lock_Flag)
-        {
-            Lock_Flag = 0;
-        }
-
-        // 0 1 2 3 左前 右前 右后 左后 顺时针    右x前y坐标系   基于编码器0度朝前，逆时针为正角度   确保轮子正转的是朝前的速度，不然得单独加负号
-
-        // 斜坡处理
-        dsb = R_DIST;
-        // True_Vx[0] = True_Vx[3] = Slope_Velocity_X.Get_Out() - sinf((PI/2.f) - THETA) * Target_Omega *  R_DIST * 4.0f;
-        // True_Vx[1] = True_Vx[2] = Slope_Velocity_X.Get_Out() + sinf((PI/2.f) - THETA) * Target_Omega *  R_DIST * 4.0f;
-
-        // True_Vy[0] = True_Vy[1] = Slope_Velocity_Y.Get_Out() - cosf((PI/2.f) - THETA) * Target_Omega *  R_DIST * 4.0f;
-        // True_Vy[2] = True_Vy[3] = Slope_Velocity_Y.Get_Out() + cosf((PI/2.f) - THETA) * Target_Omega *  R_DIST * 4.0f;
-        True_Vx[0] = True_Vx[1] = Slope_Velocity_X.Get_Out() - sqrt(2) * Target_Omega * R_DIST * 4.0f;
-        True_Vx[2] = True_Vx[3] = Slope_Velocity_X.Get_Out() + sqrt(2) * Target_Omega * R_DIST * 4.0f;
-
-        True_Vy[0] = True_Vy[3] = Slope_Velocity_Y.Get_Out() + sqrt(2) * Target_Omega * R_DIST * 4.0f;
-        True_Vy[1] = True_Vy[2] = Slope_Velocity_Y.Get_Out() - sqrt(2) * Target_Omega * R_DIST * 4.0f;
-
-        // 舵轮转动角度的优化处理
-        for (int i = 0; i < 4; i++)
-        {
-            Motor_Wheel[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_OMEGA);
-            Motor_Steer[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_AGV_MODE); // 舵轮控制模式
-
-            // 计算速度
-            float temp_Target_Omega = 0.0f;
-            arm_sqrt_f32(True_Vx[i] * True_Vx[i] + True_Vy[i] * True_Vy[i], &temp_Target_Omega);
-            temp_Target_Omega = temp_Target_Omega / WHEEL_RADIUS; // 从线速度到角速度，速控底盘
-
-            // 计算目标角度
-            if (fabs(temp_Target_Omega) < 0.0001 && True_Vy[i] == 0.0f && True_Vx[i] == 0.0f)
-            { // 避免X =0 ；Y = 0的情况
-                True_Target_Angle_Radian[i] = Motor_Steer[i].Get_Now_Zero_Offset_Radian();
-            }
-            else
-            {
-                True_Target_Angle_Radian[i] = atan2f(True_Vy[i], True_Vx[i]); //-PI -- PI   会自动处理Vx = 0;
-            }
-
-            // 角度优化处理
-            delta_Angle = True_Target_Angle_Radian[i] - Motor_Steer[i].Get_Now_Zero_Offset_Radian(); // -2PI -- 2PI
-            delta_Angle = Normalize_Angle_Radian_PI_to_PI(delta_Angle);                              // 处理重叠的角度（-20 = 340），归一化到 -PI --- PI
-            if (delta_Angle > PI / 2.0f)
-            {
-                True_Target_Angle_Radian[i] = Motor_Steer[i].Get_Now_Zero_Offset_Radian() + delta_Angle - PI;
-                temp_Target_Omega *= -1.0f;
-            }
-            else if (delta_Angle < -PI / 2.0f)
-            {
-                True_Target_Angle_Radian[i] = Motor_Steer[i].Get_Now_Zero_Offset_Radian() + delta_Angle + PI;
-                temp_Target_Omega *= -1.0f;
-            }
-            else
-            {
-                // 不需要处理角度
-                True_Target_Angle_Radian[i] = Motor_Steer[i].Get_Now_Zero_Offset_Radian() + delta_Angle;
-            }
-
-            // 处理-180 - 180的突变问题    同时还有优劣弧处理
-            // delta_Angle = True_Target_Angle_Radian[i] - Motor_Steer[i].Get_Now_Zero_Offset_Radian();
-            True_Target_Angle_Radian[i] = Normalize_Angle_Radian_PI_to_PI(True_Target_Angle_Radian[i]);
-
-            Motor_Steer[i].Set_Target_Radian(True_Target_Angle_Radian[i]);
-            Motor_Wheel[i].Set_Target_Omega_Radian(temp_Target_Omega);
-        }
-
-        for (int i = 0; i < 4; i++)
-        {
-            Transform_Radian = Motor_Steer[i].Get_Now_Zero_Offset_Radian();
-            Motor_Steer[i].Set_Transform_Radian(Transform_Radian);
-            Motor_Wheel[i].TIM_PID_PeriodElapsedCallback();
-            Motor_Steer[i].TIM_PID_PeriodElapsedCallback();
-        }
-        break;
-    }
-    }
-#endif
+    #endif
 }
 
-void Class_Steering_Wheel_Chassis::Set_Chassis_Kalman_Measure(float value1, float value2, float value3, float value4, float value5, float value6)
+void Class_Tricycle_Chassis::Set_Chassis_Kalman_Measure(float value1, float value2, float value3, float value4, float value5, float value6)
 {
     Chassis_Speed_Kalman.MeasuredVector[0] = value1;
     Chassis_Speed_Kalman.MeasuredVector[1] = value2;
@@ -357,209 +261,68 @@ void Class_Steering_Wheel_Chassis::Set_Chassis_Kalman_Measure(float value1, floa
     Chassis_Speed_Kalman.MeasuredVector[3] = value4;
     Chassis_Speed_Kalman.MeasuredVector[4] = value5;
     Chassis_Speed_Kalman.MeasuredVector[5] = value6;
+
+
 }
+
 float tmp_Velocity_Vx, tmp_Velocity_Vy, tmp_Omega;
-float Ins_Accel_X_b, Ins_Accel_Y_b;
-float wwx,wwy;
-float H7_Offset_X = 0.027f, H7_Offset_Y = 0.1275f, Distance_Offset = 0.0f;
-void Class_Steering_Wheel_Chassis::Chassis_Speed_Estimate()
+void Class_Tricycle_Chassis::Chassis_Speed_Estimate()
 {
-    
+    //底盘坐标系的X，Y方向加速度
+    float Ins_Accel_X_b = IMU->Get_Accel_X_b();
+    float Ins_Accel_Y_b = IMU->Get_Accel_Y_b();
+
+    float Distance_Offset = 0.0f;
+    float offset_angle = atan2f(H7_Offset_Y, H7_Offset_X);
+
     tmp_Velocity_Vx = tmp_Velocity_Vy = tmp_Omega = 0.0f;
     for (int i = 0; i < 4; i++)
     {
-        tmp_Velocity_Vx += (Motor_Wheel[i].Get_Now_Omega_Radian() * arm_cos_f32(Motor_Steer[i].Get_Now_Zero_Offset_Radian()) * WHEEL_RADIUS) / 4.0f;
-        tmp_Velocity_Vy += (Motor_Wheel[i].Get_Now_Omega_Radian() * arm_sin_f32(Motor_Steer[i].Get_Now_Zero_Offset_Radian()) * WHEEL_RADIUS) / 4.0f;
-        tmp_Omega += (Motor_Wheel[i].Get_Now_Omega_Radian() * arm_cos_f32(Wheel_Azimuth[i] - Motor_Steer[i].Get_Now_Zero_Offset_Radian()) * WHEEL_RADIUS / R_DIST) / 4.0f;
+        //底盘坐标系下的速度解算
+        tmp_Velocity_Vx += (Motor_Wheel[i].Get_Now_Omega_Radian() * arm_cos_f32(Wheel_Azimuth[i]) * WHEEL_RADIUS) / 4.0f;
+        tmp_Velocity_Vy += (Motor_Wheel[i].Get_Now_Omega_Radian() * arm_sin_f32(Wheel_Azimuth[i]) * WHEEL_RADIUS) / 4.0f;
+        tmp_Omega += (Motor_Wheel[i].Get_Now_Omega_Radian() * arm_cos_f32(Wheel_Azimuth[i]) * WHEEL_RADIUS / CHASSIS_RADIUS) / 4.0f;
     }
-    Ins_Accel_X_b = -IMU->Get_Accel_X_b(); // 与imu实际放置方式有关
-    Ins_Accel_Y_b = -IMU->Get_Accel_Y_b();
-    float offset_angle = atan2f(H7_Offset_X, H7_Offset_Y);
-    arm_sqrt_f32(H7_Offset_X * H7_Offset_X + H7_Offset_Y * H7_Offset_Y, &Distance_Offset);
 
+    //离心加速度补偿
+    arm_sqrt_f32(H7_Offset_X * H7_Offset_X + H7_Offset_Y * H7_Offset_Y, &Distance_Offset);
     Ins_Accel_X_b = Ins_Accel_X_b - Distance_Offset * IMU->Get_Gyro_Yaw() * IMU->Get_Gyro_Yaw() * arm_cos_f32(offset_angle);
     Ins_Accel_Y_b = Ins_Accel_Y_b - Distance_Offset * IMU->Get_Gyro_Yaw() * IMU->Get_Gyro_Yaw() * arm_sin_f32(offset_angle);
 
-    wwx = Ins_Accel_X_b;
-    wwy = Ins_Accel_Y_b;
+    Chassis_To_Gimbal_Coordinate_Transform(Ins_Accel_X_b, Ins_Accel_Y_b);
+    Chassis_To_Gimbal_Coordinate_Transform(tmp_Velocity_Vx, tmp_Velocity_Vy);
 
-    float derta_angle;
-    float Chassis_Angle;
-    Chassis_Angle = Motor_Yaw->Get_Now_Radian();
-    derta_angle = (Reference_Radian - Chassis_Angle);
-    if (Chassis_Control_Type== Chassis_Control_Type_Drive)
-    {
-        derta_angle = (derta_angle + 20.5f * PI / 180.0f);
+    if(Chassis_Control_Type == Chassis_Control_Type_SPIN){
+        Ins_Accel_X_b = 0.0f;
+        Ins_Accel_Y_b = 0.0f;
     }
-    derta_angle = derta_angle < 0 ? (derta_angle + 2 * PI) : derta_angle;
 
-    float tmp_ax = Ins_Accel_X_b;
-    float tmp_ay = Ins_Accel_Y_b;
-
-    Ins_Accel_X_b = tmp_ax * arm_cos_f32(derta_angle) - tmp_ay * arm_sin_f32(derta_angle);
-    Ins_Accel_Y_b = tmp_ax * arm_sin_f32(derta_angle) + tmp_ay * arm_cos_f32(derta_angle);
-
-    float tmp_vx = tmp_Velocity_Vx;
-    float tmp_vy = tmp_Velocity_Vy;
-
-    tmp_Velocity_Vx = tmp_vx * arm_cos_f32(derta_angle) - tmp_vy * arm_sin_f32(derta_angle);
-    tmp_Velocity_Vy = tmp_vx * arm_sin_f32(derta_angle) + tmp_vy * arm_cos_f32(derta_angle);
     //注意数据单位
-    //Set_Chassis_Kalman_Measure(tmp_Velocity_Vx, tmp_Velocity_Vy, Ins_Accel_X_b, Ins_Accel_Y_b, tmp_Omega, IMU->Get_Gyro_Yaw());
-    Set_Chassis_Kalman_Measure(tmp_Velocity_Vx, tmp_Velocity_Vy, 0.0f, 0.0f, tmp_Omega, IMU->Get_Gyro_Yaw());
+    Set_Chassis_Kalman_Measure(tmp_Velocity_Vx, tmp_Velocity_Vy, Ins_Accel_X_b, Ins_Accel_Y_b, tmp_Omega, IMU->Get_Gyro_Yaw());
     
     Kalman_Filter_Update(&Chassis_Speed_Kalman, NULL);
 
     Now_Velocity_X = Chassis_Speed_Kalman.FilteredValue[0];
     Now_Velocity_Y = Chassis_Speed_Kalman.FilteredValue[1];
     Now_Omega      = Chassis_Speed_Kalman.FilteredValue[4];
+
+    Now_Velocity_X_Chassis = Now_Velocity_X;
+    Now_Velocity_Y_Chassis = Now_Velocity_Y;
+    Now_Omega_Chassis = Now_Omega;
+    Gimbal_To_Chassis_Coordinate_Transform(Now_Velocity_X_Chassis, Now_Velocity_Y_Chassis);
+
+    Now_Velocity_X = Chassis_Speed_Kalman.FilteredValue[0];
+    Now_Velocity_Y = Chassis_Speed_Kalman.FilteredValue[1];
+    Now_Omega      = Chassis_Speed_Kalman.FilteredValue[4];
+
+    //零速死区: 抑制静止时积分漂移
+    if(fabsf(Now_Velocity_X) < 0.05f) Now_Velocity_X = 0.0f;
+    if(fabsf(Now_Velocity_Y) < 0.05f) Now_Velocity_Y = 0.0f;
+    if(fabsf(Now_Omega)      < 0.02f) Now_Omega      = 0.0f;
+
 }
 
-void Class_Steering_Wheel_Chassis::Stree_Angle_Resolution()
-{
-    // 轮组自锁，每个小轮坐标系都符合右手系
-    static uint32_t Lock_Time = 0;
-    static uint8_t Lock_Flag = 0;
-    float delta_Angle = 0.0f, Transform_Radian = 0.0f; // 用于优化处理的变量
-    if (fabs(Target_Velocity_X) < 0.01 && fabs(Target_Velocity_Y) < 0.01 && fabs(Target_Omega) < 0.01)
-    {
-        Lock_Time++;
-        if (Lock_Time > 3000)
-            Lock_Flag = 1;
-        if (Lock_Flag)
-        {
-            for (int i = 0; i < 4; i++)
-            {
-                Motor_Steer[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_AGV_MODE); // 舵轮控制模式
-            }
-
-            Motor_Steer[0].Set_Target_Radian(-PI / 4.0f);
-            Motor_Steer[1].Set_Target_Radian(PI / 4.0f);
-            Motor_Steer[2].Set_Target_Radian(-PI / 4.0f);
-            Motor_Steer[3].Set_Target_Radian(PI / 4.0f);
-            for (int i = 0; i < 4; i++)
-            {
-                Transform_Radian = Motor_Steer[i].Get_Now_Zero_Offset_Radian();
-
-                // 优劣弧处理
-                if ((i % 2) == 0)
-                {
-                    delta_Angle = -PI / 4.0f - Transform_Radian;
-                }
-                else
-                {
-                    delta_Angle = PI / 4.0f - Transform_Radian;
-                }
-
-                delta_Angle = Normalize_Angle_Radian_PI_to_PI(delta_Angle); // 将角度限制在-PI到PI之间
-
-                if (delta_Angle > PI / 2.0f)
-                {
-                    delta_Angle = delta_Angle - PI;
-                }
-                else if (delta_Angle < -PI / 2.0f)
-                {
-                    delta_Angle = delta_Angle + PI;
-                }
-                Motor_Steer[i].Set_Target_Radian(Transform_Radian + delta_Angle);
-                Motor_Steer[i].Set_Transform_Radian(Transform_Radian);
-                Motor_Steer[i].TIM_PID_PeriodElapsedCallback();
-                Target_Wheel_Omega[i] = 0.0f;
-            }
-            return;
-        }
-    }
-    else
-    {
-        Lock_Time = 0;
-    }
-
-    if (Lock_Flag)
-    {
-        Lock_Flag = 0;
-    }
-    float tmp_target_angle[4];
-    float True_Vx[4], True_Vy[4], True_Target_Angle_Radian[4];
-
-    float derta_angle;
-    float Chassis_Angle;
-    Chassis_Angle = Motor_Yaw->Get_Now_Radian();
-    derta_angle = -(Reference_Radian - Chassis_Angle);
-    if (Chassis_Control_Type== Chassis_Control_Type_Drive)
-    {
-        derta_angle = (derta_angle - 20.5f * PI / 180.0f);
-    }
-    derta_angle = derta_angle < 0 ? (derta_angle + 2 * PI) : derta_angle;
-
-    float tmp_tx ,tmp_ty;
-
-    tmp_tx = Target_Velocity_X * arm_cos_f32(derta_angle) - Target_Velocity_Y * arm_sin_f32(derta_angle);
-    tmp_ty = Target_Velocity_X * arm_sin_f32(derta_angle) + Target_Velocity_Y * arm_cos_f32(derta_angle);
-
-    if (Chassis_Control_Type == Chassis_Control_Type_Drive)
-    {
-        True_Vx[0] = True_Vx[1] = tmp_tx - cosf(PI / 4.f) * Target_Drive_Omega * R_DIST;
-        True_Vx[2] = True_Vx[3] = tmp_tx + cosf(PI / 4.f) * Target_Drive_Omega * R_DIST;
-
-        True_Vy[0] = True_Vy[3] = tmp_ty + sinf(PI / 4.f) * Target_Drive_Omega * R_DIST;
-        True_Vy[1] = True_Vy[2] = tmp_ty - sinf(PI / 4.f) * Target_Drive_Omega * R_DIST;
-    }
-    else
-    {
-        True_Vx[0] = True_Vx[1] = tmp_tx - cosf(PI / 4.f) * Target_Omega * R_DIST;
-        True_Vx[2] = True_Vx[3] = tmp_tx + cosf(PI / 4.f) * Target_Omega * R_DIST;
-
-        True_Vy[0] = True_Vy[3] = tmp_ty + sinf(PI / 4.f) * Target_Omega * R_DIST;
-        True_Vy[1] = True_Vy[2] = tmp_ty - sinf(PI / 4.f) * Target_Omega * R_DIST;
-    }
-
-    // 舵轮转动角度的优化处理
-    for (int i = 0; i < 4; i++)
-    {
-        Motor_Steer[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_AGV_MODE); // 舵轮控制模式
-
-        // 计算速度
-        float temp_Target_Omega = 0.0f;
-        arm_sqrt_f32(True_Vx[i] * True_Vx[i] + True_Vy[i] * True_Vy[i], &temp_Target_Omega);
-        temp_Target_Omega = temp_Target_Omega / WHEEL_RADIUS;
-
-        // 计算目标角度
-        if (fabs(temp_Target_Omega) < 0.0001f)
-        { // 避免X =0 ；Y = 0的情况
-            True_Target_Angle_Radian[i] = Motor_Steer[i].Get_Now_Zero_Offset_Radian();
-        }
-        else
-        {
-            True_Target_Angle_Radian[i] = atan2f(True_Vy[i], True_Vx[i]); //-PI -- PI   会自动处理Vx = 0;
-            tmp_target_angle[i] = True_Target_Angle_Radian[i];
-        }
-
-        float delta_Angle;
-        // 角度优化处理         180度内最短路径选择   不是选优劣弧   已经顺便处理了跳变点
-        delta_Angle = True_Target_Angle_Radian[i] - Motor_Steer[i].Get_Now_Zero_Offset_Radian(); // -2PI -- 2PI
-        delta_Angle = Normalize_Angle_Radian_PI_to_PI(delta_Angle);                              // 处理重叠的角度（-20 = 340），归一化到 -PI --- PI
-        if (delta_Angle > PI / 2.0f)
-        {
-            delta_Angle = delta_Angle - PI;
-            temp_Target_Omega *= -1.0f;
-        }
-        else if (delta_Angle < -PI / 2.0f)
-        {
-            delta_Angle = delta_Angle + PI;
-            temp_Target_Omega *= -1.0f;
-        }
-
-        True_Target_Angle_Radian[i] = Motor_Steer[i].Get_Now_Zero_Offset_Radian() + delta_Angle;
-        //True_Target_Angle_Radian[i] = Normalize_Angle_Radian_PI_to_PI(delta_Angle + Motor_Steer[i].Get_Now_Zero_Offset_Radian()); // 归一化到 -PI --- PI
-        Motor_Steer[i].Set_Target_Radian(True_Target_Angle_Radian[i]);
-        Motor_Steer[i].Set_Transform_Radian(Motor_Steer[i].Get_Now_Zero_Offset_Radian());
-        Motor_Steer[i].TIM_PID_PeriodElapsedCallback();
-        Target_Wheel_Omega[i] = temp_Target_Omega;
-    }
-}
-
-float Fx,Fy,bbb;
-void Class_Steering_Wheel_Chassis::Force_Speed_Resolution()
+void Class_Tricycle_Chassis::Force_Speed_Resolution()
 {
     switch (Chassis_Control_Type)
     {
@@ -575,20 +338,18 @@ void Class_Steering_Wheel_Chassis::Force_Speed_Resolution()
 
         for(int i = 0; i < 4;i++){
             Motor_Wheel[i].Disable();
-            Motor_Steer[i].Disable();
         }
 
         break;
     }
     case (Chassis_Control_Type_FLLOW):
-    case (Chassis_Control_Type_SPIN_Positive):
+    case (Chassis_Control_Type_SPIN):
     {
-
-        PID_Velocity_X.Set_Target(Slope_Velocity_X.Get_Out());
+        PID_Velocity_X.Set_Target(Gimbal_Target_Velocity_X);
         PID_Velocity_X.Set_Now(Now_Velocity_X);
         PID_Velocity_X.TIM_Adjust_PeriodElapsedCallback();
 
-        PID_Velocity_Y.Set_Target(Slope_Velocity_Y.Get_Out());
+        PID_Velocity_Y.Set_Target(Gimbal_Target_Velocity_Y);
         PID_Velocity_Y.Set_Now(Now_Velocity_Y);
         PID_Velocity_Y.TIM_Adjust_PeriodElapsedCallback();
 
@@ -596,39 +357,21 @@ void Class_Steering_Wheel_Chassis::Force_Speed_Resolution()
         PID_Omega.Set_Now(Now_Omega);
         PID_Omega.TIM_Adjust_PeriodElapsedCallback();
 
-        float force_x, force_y, torque_omega;
+        force_x = -PID_Velocity_X.Get_Out();
+        force_y = -PID_Velocity_Y.Get_Out();
+        torque_omega = -PID_Omega.Get_Out();
 
-        force_x = PID_Velocity_X.Get_Out();
-        force_y = PID_Velocity_Y.Get_Out();
-        torque_omega = PID_Omega.Get_Out();
-
-        float derta_angle;
-        float Chassis_Angle;
-        Chassis_Angle = Motor_Yaw->Get_Now_Radian();
-        derta_angle = -(Reference_Radian - Chassis_Angle);
-        if (Chassis_Control_Type == Chassis_Control_Type_Drive)
-        {
-            derta_angle = (derta_angle - 20.5f * PI / 180.0f);
-        }
-        derta_angle = derta_angle < 0 ? (derta_angle + 2 * PI) : derta_angle;
-
-        float tmp_force_x = force_x;
-        float tmp_force_y = force_y;
-
-        force_x = tmp_force_x * arm_cos_f32(derta_angle) - tmp_force_y * arm_sin_f32(derta_angle);
-        force_y = tmp_force_x * arm_sin_f32(derta_angle) + tmp_force_y * arm_cos_f32(derta_angle);
-
-        Fx = force_x;
-        Fy = force_y;
-        bbb = derta_angle;
+        Gimbal_To_Chassis_Coordinate_Transform(force_x, force_y);
 
         // 每个轮的扭力
         float tmp_force[4];
         for (int i = 0; i < 4; i++)
         {
             // 解算到每个轮组的具体摩擦力
-            tmp_force[i] = force_x * arm_cos_f32(Motor_Steer[i].Get_Now_Zero_Offset_Radian()) + force_y * arm_sin_f32(Motor_Steer[i].Get_Now_Zero_Offset_Radian()) + torque_omega / R_DIST * arm_cos_f32(Wheel_Azimuth[i] - Motor_Steer[i].Get_Now_Zero_Offset_Radian());
-        }
+        tmp_force[i] = force_x * arm_cos_f32(Wheel_Azimuth[i])
+             + force_y * arm_sin_f32(Wheel_Azimuth[i])
+             + torque_omega / CHASSIS_RADIUS;       
+         }
 
         for (int i = 0; i < 4; i++)
         {
@@ -647,179 +390,188 @@ void Class_Steering_Wheel_Chassis::Force_Speed_Resolution()
             {
                 Target_Wheel_Torque[i] += Motor_Wheel[i].Get_Now_Omega_Radian() / Wheel_Resistance_Omega_Threshold * Dynamic_Resistance_Wheel_Current[i];
             }
+
+            float tmp_theta = Wheel_Azimuth[i] - atan2f(Now_Velocity_Y_Chassis, Now_Velocity_X_Chassis);
+            float a = Now_Velocity_X_Chassis * Now_Velocity_X_Chassis + Now_Velocity_Y_Chassis * Now_Velocity_Y_Chassis;
+            float b = (Chassis_Radius * Now_Omega_Chassis) * (Chassis_Radius * Now_Omega_Chassis);
+            float c = a * a + b * b - 2 * a * b * arm_cos_f32(Wheel_Azimuth[i] - tmp_theta);
+            Theory_WHeel_Omega[i] = sqrtf(c) / WHEEL_RADIUS;
+            Slip_Rate[i] = (Theory_WHeel_Omega[i] - Motor_Wheel[i].Get_Now_Omega_Radian()) / Theory_WHeel_Omega[i];
+            // Math_Constrain(&Slip_Rate[i], -1.0f, 1.0f);
+            // if(Slip_Rate[i] < -0.3f){
+            //     Target_Wheel_Torque[i] -= (Slip_Rate[i] + 0.3f) * 20000.0f; 
+            // }
+
+
+            // Target_Wheel_Torque[i] = (Math_Abs(Target_Wheel_Torque[i]) > 0.25f) ? Target_Wheel_Torque[i] : 0;
             
             Motor_Wheel[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_TORQUE);
             Motor_Wheel[i].Set_Target_Torque(Target_Wheel_Torque[i]);
-            //Motor_Wheel[i].Set_Target_Torque(0.0f);
-            Motor_Wheel[i].TIM_PID_PeriodElapsedCallback();
-        }
-        break;
-    }
-    case (Chassis_Control_Type_Drive):
-    {
-        PID_Velocity_X.Set_Target(Slope_Velocity_X.Get_Out());
-        PID_Velocity_X.Set_Now(Now_Velocity_X);
-        PID_Velocity_X.TIM_Adjust_PeriodElapsedCallback();
-
-        PID_Velocity_Y.Set_Target(Slope_Velocity_Y.Get_Out());
-        PID_Velocity_Y.Set_Now(Now_Velocity_Y);
-        PID_Velocity_Y.TIM_Adjust_PeriodElapsedCallback();
-
-        PID_Omega.Set_Target(Target_Drive_Omega);
-        PID_Omega.Set_Now(Now_Omega);
-        PID_Omega.TIM_Adjust_PeriodElapsedCallback();
-
-        float force_x, force_y, torque_omega;
-
-        force_x = PID_Velocity_X.Get_Out();
-        force_y = PID_Velocity_Y.Get_Out();
-        torque_omega = PID_Omega.Get_Out();
-
-        float derta_angle;
-        float Chassis_Angle;
-        Chassis_Angle = Motor_Yaw->Get_Now_Radian();
-        derta_angle = -(Reference_Radian - Chassis_Angle);
-        if (Chassis_Control_Type == Chassis_Control_Type_Drive)
-        {
-            derta_angle = (derta_angle - 20.5f * PI / 180.0f);
-        }
-        derta_angle = derta_angle < 0 ? (derta_angle + 2 * PI) : derta_angle;
-
-        float tmp_force_x = force_x;
-        float tmp_force_y = force_y;
-
-        force_x = tmp_force_x * arm_cos_f32(derta_angle) - tmp_force_y * arm_sin_f32(derta_angle);
-        force_y = tmp_force_x * arm_sin_f32(derta_angle) + tmp_force_y * arm_cos_f32(derta_angle);
-
-        Fx = force_x;
-        Fy = force_y;
-        bbb = derta_angle;
-
-        // 每个轮的扭力
-        float tmp_force[4];
-        for (int i = 0; i < 4; i++)
-        {
-            // 解算到每个轮组的具体摩擦力
-            tmp_force[i] = force_x * arm_cos_f32(Motor_Steer[i].Get_Now_Zero_Offset_Radian()) + force_y * arm_sin_f32(Motor_Steer[i].Get_Now_Zero_Offset_Radian()) + torque_omega / R_DIST * arm_cos_f32(Wheel_Azimuth[i] - Motor_Steer[i].Get_Now_Zero_Offset_Radian());
-        }
-
-        for (int i = 0; i < 4; i++)
-        {
-            // 摩擦力转换至扭矩
-            Target_Wheel_Torque[i] = tmp_force[i] * WHEEL_RADIUS + Wheel_Speed_Limit_Factor * (Target_Wheel_Omega[i] - Motor_Wheel[i].Get_Now_Omega_Radian());
-            // 动摩擦阻力前馈
-            if (Target_Wheel_Omega[i] > Wheel_Resistance_Omega_Threshold)
-            {
-                Target_Wheel_Torque[i] += Dynamic_Resistance_Wheel_Current[i];
-            }
-            else if (Target_Wheel_Omega[i] < -Wheel_Resistance_Omega_Threshold)
-            {
-                Target_Wheel_Torque[i] -= Dynamic_Resistance_Wheel_Current[i];
-            }
-            else
-            {
-                Target_Wheel_Torque[i] += Motor_Wheel[i].Get_Now_Omega_Radian() / Wheel_Resistance_Omega_Threshold * Dynamic_Resistance_Wheel_Current[i];
-            }
-            
-            Motor_Wheel[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_TORQUE);
-            Motor_Wheel[i].Set_Target_Torque(Target_Wheel_Torque[i]);
-            //Motor_Wheel[i].Set_Target_Torque(0.0f);
             Motor_Wheel[i].TIM_PID_PeriodElapsedCallback();
         }
         break;
     }
     }
 }
+void Class_Tricycle_Chassis::Chassis_To_Gimbal_Coordinate_Transform(float &Var_X, float &Var_Y)
+{
+    float temp_X = Var_X * arm_cos_f32(-delta_angle) - Var_Y * arm_sin_f32(-delta_angle);
+    float temp_Y = Var_X * arm_sin_f32(-delta_angle) + Var_Y * arm_cos_f32(-delta_angle);
+    Var_X = temp_X;
+    Var_Y = temp_Y;
+}
 
+void Class_Tricycle_Chassis::Gimbal_To_Chassis_Coordinate_Transform(float &Var_X, float &Var_Y)
+{
+    float temp_X = Var_X * arm_cos_f32(delta_angle) - Var_Y * arm_sin_f32(delta_angle);
+    float temp_Y = Var_X * arm_sin_f32(delta_angle) + Var_Y * arm_cos_f32(delta_angle);
+    Var_X = temp_X;
+    Var_Y = temp_Y;
+}
+
+uint32_t nb=0;
+float nb666;
 /**
  * @brief TIM定时器中断计算回调函数
  *
  */
-float Max_Power_test = 60.0f;
-float Chassis_Buffer = 0.0;
-float a,b,c;
-void Class_Steering_Wheel_Chassis::TIM_Calculate_PeriodElapsedCallback(Enum_Sprint_Status __Sprint_Status)
+void Class_Tricycle_Chassis::TIM_Calculate_PeriodElapsedCallback()
 {
     //斜坡函数计算用于速度解算初始值获取
-    Slope_Velocity_X.Set_Target(Target_Velocity_X);
+    Slope_Velocity_X.Set_Target(Gimbal_Target_Velocity_X);
     Slope_Velocity_X.TIM_Calculate_PeriodElapsedCallback();
 
-    Slope_Velocity_Y.Set_Target(Target_Velocity_Y);
+    Slope_Velocity_Y.Set_Target(Gimbal_Target_Velocity_Y);
     Slope_Velocity_Y.TIM_Calculate_PeriodElapsedCallback();
 
     Slope_Omega.Set_Target(Target_Omega);
     Slope_Omega.TIM_Calculate_PeriodElapsedCallback();
     
-    //速度逆解算
-    //Speed_Resolution();
+    nb666=DWT_GetDeltaT(&nb);
 
-    PERF_START(Chassis_Speed_Estimate_Timing);
-    Chassis_Speed_Estimate();
-    PERF_STOP(Chassis_Speed_Estimate_Timing);
-    Stree_Angle_Resolution();
+    //速度解算
+     Speed_Resolution();
+
+    Chassis_Speed_Estimate();//用全向轮底盘是要改角度(还未改)
+    //Stree_Angle_Resolution();
     Force_Speed_Resolution();
 
-    /***************************超级电容*********************************/
-#ifdef POWER_LIMIT_JH
+    #if POWER_CONTROL == 1
+    /*************************功率限制策略*******************************/
+    #ifdef POWER_LIMIT_1
+
+    Power_Limit.Set_Motor(Motor_Wheel);                         //添加四个电机的控制电流和当前转速
+    Power_Limit.Set_Power_Limit(Limit_Power);
+    Power_Limit.Set_Chassis_Buffer(Chassis_Energy_Power);
+    Power_Limit.TIM_Adjust_PeriodElapsedCallback(Motor_Wheel);
+
+    #elif defined (POWER_LIMIT_2)
     static uint8_t supercap_flag = 0;                   //超电能量低于50J的标志位
 
-    //计算限制功率
+    // 计算限制功率
     if (Referee->Get_Referee_Status() == Referee_Status_ENABLE)
     {
+        // 缓冲环限制功率
+        Power_Management.Buffer_Power = 0.0f;    //Referee->Get_Chassis_Energy_Buffer() - 30.0f; 
+        //Power_Management.Buffer_Power = (Referee->Get_Chassis_Energy_Buffer() - 30.0f) * 1.5f;
+        Math_Constrain(&Power_Management.Buffer_Power, -50.0f, 30.0f);
 
-        Power_Management.Max_Power = Supercap.Get_Chassis_Device_LimitPower();
+        if (Supercap.Get_Supercap_Status() != Supercap_Status_DISABLE)              //&& Sprint_Status == Sprint_Status_ENABLE
+        {
+            if(supercap_flag == 1){                     //超电低电量了
+                Power_Management.Max_Power = Referee->Get_Chassis_Power_Max();
+                if(Supercap.Get_Supercap_Charge_Percentage() > (uint8_t)75){
+                    supercap_flag = 0;                  //充满电可以使用
+                }
+            }
+            else{
+                if (Supercap.Get_Supercap_Charge_Percentage() > (uint8_t)40)
+                {
+                    Power_Management.Max_Power = Supercap.Get_Supercap_Buffer_Power() + Power_Management.Buffer_Power + Referee->Get_Chassis_Power_Max();
+                }
+                else
+                {
+                    supercap_flag = 1;
+                    Power_Management.Max_Power = Referee->Get_Chassis_Power_Max();
+                }
+            }
+        }
+        else
+        {
+            // Power_Management.Max_Power = Power_Management.Buffer_Power + Referee->Get_Chassis_Power_Max();
+            supercap_flag = 0;
+            Power_Management.Max_Power = Referee->Get_Chassis_Power_Max();              //不吃缓冲能量
+        }
     }
     else
     {
-        //裁判系统离线限制功率
-        //Power_Management.Max_Power = 60.f;
-
+        // 裁判系统离线限制功率
+        supercap_flag = 0;
+        Power_Management.Max_Power = 100.0f;
+        Power_Management.Buffer_Power = 0.0f;
     }
-    
-    #ifdef AGV
-    for (int i = 0; i < 4; i++)         //数据传递处理
-    {
-        //都是计算转子的
-        // Power_Management.Motor_Data[i].feedback_omega = Motor_Wheel[i].Get_Now_Omega_Radian() * RAD_TO_RPM * Motor_Wheel[i].Get_Gearbox_Rate();
-        Power_Management.Motor_Data[i].feedback_omega = Motor_Wheel[i].Get_Now_Omega_Radian() * RAD_TO_RPM * M3508_REDUCTION_RATIO;
-        Power_Management.Motor_Data[i].feedback_torque = Motor_Wheel[i].Get_Now_Torque() * M3508_CMD_CURRENT_TO_TORQUE;     //与减速比有关
-        Power_Management.Motor_Data[i].torque = Motor_Wheel[i].Get_Out() * M3508_CMD_CURRENT_TO_TORQUE;                     //与减速比有关
-        Power_Management.Motor_Data[i].pid_output = Motor_Wheel[i].Get_Out();
 
-        Power_Management.Motor_Data[i + 4].feedback_omega  = Motor_Steer[i].Get_Now_Omega_Radian() * RAD_TO_RPM * Motor_Steer[i].Get_Gearbox_Rate();
-        Power_Management.Motor_Data[i + 4].feedback_torque = Motor_Steer[i].Get_Now_Torque() * M3508_CMD_CURRENT_TO_TORQUE;
-        Power_Management.Motor_Data[i + 4].torque          = Motor_Steer[i].Get_Out() * M3508_CMD_CURRENT_TO_TORQUE;
-        Power_Management.Motor_Data[i + 4].pid_output      = Motor_Steer[i].Get_Out();  
+    Power_Management.Actual_Power = Supercap.Get_Chassis_Power();
+    Power_Management.Total_error = 0.0f;
+
+    #ifdef AGV
+
+    for (int i = 0; i < 4; i++) // 数据传递处理
+    {
+        // 都是计算转子的
+        Power_Management.Motor_Data[i].feedback_omega = Motor_Wheel[i].Get_Now_Omega_Radian() * RAD_TO_RPM * Motor_Wheel[i].Get_Gearbox_Rate();
+        Power_Management.Motor_Data[i].feedback_torque = Motor_Wheel[i].Get_Now_Torque() * M3508_CMD_CURRENT_TO_TORQUE; // 与减速比有关
+        Power_Management.Motor_Data[i].torque = Motor_Wheel[i].Get_Out() * M3508_CMD_CURRENT_TO_TORQUE;                 // 与减速比有关
+        Power_Management.Motor_Data[i].pid_output = Motor_Wheel[i].Get_Out();   
     }
 
     Power_Limit.Power_Task(Power_Management);
 
-    // for (int i = 0; i < 4; i++)
-    // {
-    //     Motor_Wheel[i].Set_Out(Power_Management.Motor_Data[i].output);
-    //     // //Motor_Wheel[i].Output();
+    for (int i = 0; i < 4; i++)
+    {
+        Motor_Wheel[i].Set_Out(Power_Management.Motor_Data[i].output);
+        Motor_Wheel[i].Output();
+    }
 
-    //     Motor_Steer[i].Set_Out(Power_Management.Motor_Data[i + 4].output);//set_out已经有output输出
-    //     //Motor_Steer[i].Output();
-    // }
+    #else
+    for (int i = 0; i < 4; i++) // 数据传递处理
+    {
+        // 都是计算转子的
+        Power_Management.Motor_Data[i].feedback_omega = Motor_Wheel[i].Get_Now_Omega_Radian() * RAD_TO_RPM * Motor_Wheel[i].Get_Gearbox_Rate();
+        Power_Management.Motor_Data[i].feedback_torque = Motor_Wheel[i].Get_Now_Torque() * M3508_CMD_CURRENT_TO_TORQUE; // 与减速比有关
+        Power_Management.Motor_Data[i].torque = Motor_Wheel[i].Get_Out() * M3508_CMD_CURRENT_TO_TORQUE;                 // 与减速比有关
+        Power_Management.Motor_Data[i].pid_output = Motor_Wheel[i].Get_Out();
+
+        Power_Management.Motor_Data[i].Target_error = fabs(Motor_Wheel[i].Get_Target_Omega_Radian() - Motor_Wheel[i].Get_Now_Omega_Radian());
+    }
+    Power_Management.Total_error = 0.0;
+    Power_Limit.Power_Task(Power_Management);
+
+    for (int i = 0; i < 4; i++)
+    {
+        Motor_Wheel[i].Set_Out(Power_Management.Motor_Data[i].output);
+        Motor_Wheel[i].Output();
+    }
+    #endif
+
+    Supercap.Set_Supercap_Control_Status(Supercap_Control_Status_ENABLE);
+    if(Referee->Get_Referee_Status() != Referee_Status_DISABLE){
+        Supercap.Set_Limit_Power(Referee->Get_Chassis_Power_Max());               //这样子是优先使用的缓冲功率
+    }
+    else{
+        Supercap.Set_Limit_Power(60.0f);
+    }
+    Supercap.Set_Referee_MaxPower(static_cast<float>(Referee->Get_Chassis_Power_Max()));
+    Supercap.Set_Referee_BufferPower(static_cast<float>(Referee->Get_Chassis_Energy_Buffer()));
+    Supercap.TIM_Supercap_PeriodElapsedCallback();
 
     #endif
-    if (Get_Chassis_Control_Type() == Chassis_Control_Type_DISABLE)
-    {
-        for (int i = 0; i < 4; i++)
-        {
-            Motor_Wheel[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_OPENLOOP);
-            Motor_Wheel[i].PID_Omega.Set_Integral_Error(0.0f);
-            Motor_Wheel[i].Set_Out(0.0f);
 
-            Motor_Steer[i].Set_DJI_Motor_Control_Method(DJI_Motor_Control_Method_OPENLOOP);
-            Motor_Steer[i].PID_Omega.Set_Integral_Error(0.0f);
-            Motor_Steer[i].PID_Angle.Set_Integral_Error(0.0f);
-            Motor_Steer[i].Set_Out(0.0f);
-        }
-    }
-#endif	
-		
+    #endif
 }
 
+void Class_Tricycle_Chassis::Power_Limit_Update()
+{
+
+}
 /************************ COPYRIGHT(C) USTC-ROBOWALKER **************************/

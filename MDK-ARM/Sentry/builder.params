@@ -2,12 +2,12 @@
     "name": "ZLLC_2027",
     "target": "Sentry",
     "toolchain": "AC6",
-    "toolchainLocation": "D:\\keil_v5\\ARM\\ARMCLANG",
-    "toolchainCfgFile": "c:\\Users\\a\\.vscode\\extensions\\cl.eide-3.27.2\\res\\data\\models/arm.v6.model.json",
+    "toolchainLocation": "C:\\Keil_v5\\ARM\\ARMCLANG",
+    "toolchainCfgFile": "c:\\Users\\sillydog\\.trae-cn\\extensions\\cl.eide-3.27.2-universal\\res\\data\\models/arm.v6.model.json",
     "buildMode": "fast|multhread",
     "showRepathOnLog": true,
-    "threadNum": 24,
-    "rootDir": "d:\\.RMUC_2027\\ZLLC_2027\\MDK-ARM",
+    "threadNum": 20,
+    "rootDir": "e:\\ZLLC_2027\\ZLLC_2027\\MDK-ARM",
     "dumpPath": "Sentry",
     "outDir": "Sentry",
     "incDirs": [
@@ -111,6 +111,7 @@
         "../User/Congfig/Src/config.cpp",
         "../User/Device/Src/buzzer.c",
         "../User/Device/Src/buzzer_bsp.c",
+        "../User/Device/Src/dvc_Fs_i6x.cpp",
         "../User/Device/Src/dvc_GraphicsSendTask.cpp",
         "../User/Device/Src/dvc_TensionMeter.cpp",
         "../User/Device/Src/dvc_VT13.cpp",
@@ -123,6 +124,7 @@
         "../User/Device/Src/dvc_imu.cpp",
         "../User/Device/Src/dvc_lkmotor.cpp",
         "../User/Device/Src/dvc_minipc.cpp",
+        "../User/Device/Src/dvc_performance.cpp",
         "../User/Device/Src/dvc_referee.cpp",
         "../User/Device/Src/dvc_servo.cpp",
         "../User/Device/Src/dvc_supercap.cpp",
@@ -176,20 +178,20 @@
             "rw-base": "",
             "xo-base": "",
             "link-scatter": [
-                "d:/.RMUC_2027/ZLLC_2027/MDK-ARM/ekf_tcm.sct"
+                "e:/ZLLC_2027/ZLLC_2027/MDK-ARM/ekf_tcm.sct"
             ]
         }
     },
     "env": {
-        "workspaceFolder": "d:\\.RMUC_2027\\ZLLC_2027\\MDK-ARM",
+        "workspaceFolder": "e:\\ZLLC_2027\\ZLLC_2027\\MDK-ARM",
         "workspaceFolderBasename": "MDK-ARM",
-        "OutDir": "d:\\.RMUC_2027\\ZLLC_2027\\MDK-ARM\\.\\Sentry",
+        "OutDir": "e:\\ZLLC_2027\\ZLLC_2027\\MDK-ARM\\.\\Sentry",
         "OutDirRoot": ".",
         "OutDirBase": ".\\Sentry",
         "ProjectName": "ZLLC_2027",
         "ConfigName": "Sentry",
-        "ProjectRoot": "d:\\.RMUC_2027\\ZLLC_2027\\MDK-ARM",
-        "ExecutableName": "d:\\.RMUC_2027\\ZLLC_2027\\MDK-ARM\\.\\Sentry\\ZLLC_2027",
+        "ProjectRoot": "e:\\ZLLC_2027\\ZLLC_2027\\MDK-ARM",
+        "ExecutableName": "e:\\ZLLC_2027\\ZLLC_2027\\MDK-ARM\\.\\Sentry\\ZLLC_2027",
         "ChipPackDir": "",
         "ChipName": "",
         "SYS_Platform": "win32",
@@ -198,11 +200,11 @@
         "SYS_PathSep": ";",
         "SYS_PathSeparator": ";",
         "SYS_EOL": "\r\n",
-        "EIDE_BUILDER_DIR": "c:\\Users\\a\\.vscode\\extensions\\cl.eide-3.27.2\\res\\tools\\win32\\unify_builder",
+        "EIDE_BUILDER_DIR": "c:\\Users\\sillydog\\.trae-cn\\extensions\\cl.eide-3.27.2-universal\\res\\tools\\win32\\unify_builder",
         "EIDE_BINARIES_VER": "12.1.1",
-        "EIDE_MSYS": "C:\\Users\\a\\.eide\\bin\\builder\\msys\\bin",
-        "EIDE_PY3_CMD": "C:\\Users\\a\\.eide\\bin\\python36\\python3.exe",
-        "ToolchainRoot": "D:\\keil_v5\\ARM\\ARMCLANG"
+        "EIDE_MSYS": "C:\\Users\\sillydog\\.eide\\bin\\builder\\msys\\bin",
+        "EIDE_PY3_CMD": "C:\\Users\\sillydog\\.eide\\bin\\python36\\python3.exe",
+        "ToolchainRoot": "C:\\Keil_v5\\ARM\\ARMCLANG"
     },
     "sysPaths": []
 }
